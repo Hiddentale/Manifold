@@ -1,16 +1,15 @@
 use super::biome::{self, Biome};
 use super::block::BlockType;
 use super::chunk::{Chunk, CHUNK_SIZE};
-use super::world::{MAX_CHUNK_Y, MIN_CHUNK_Y};
+use super::world::{TERRAIN_MAX_CY, TERRAIN_MIN_CY};
 use noise::{Fbm, MultiFractal, NoiseFn, Perlin, RidgedMulti};
 
-const SEED: u32 = 42;
 const SEA_LEVEL: usize = 64;
 const DIRT_DEPTH: usize = 4;
 const MIN_HEIGHT: usize = 4;
 const MAX_HEIGHT: usize = 200;
 const CAVE_THRESHOLD: f64 = 0.55;
-const CHUNK_LAYERS: usize = (MAX_CHUNK_Y - MIN_CHUNK_Y + 1) as usize;
+const CHUNK_LAYERS: usize = (TERRAIN_MAX_CY - TERRAIN_MIN_CY + 1) as usize;
 
 // Noise scales
 const CONTINENT_SCALE: f64 = 0.002;
@@ -83,8 +82,8 @@ impl WorldNoises {
 }
 
 /// Generates a full column of chunks at the given (chunk_x, chunk_z) coordinates.
-pub fn generate_column(chunk_x: i32, chunk_z: i32) -> Vec<Chunk> {
-    let noises = WorldNoises::new(SEED);
+pub fn generate_column(chunk_x: i32, chunk_z: i32, seed: u32) -> Vec<Chunk> {
+    let noises = WorldNoises::new(seed);
     let mut chunks: Vec<Chunk> = (0..CHUNK_LAYERS).map(|_| Chunk::new(BlockType::Air)).collect();
 
     for z in 0..CHUNK_SIZE {
@@ -178,5 +177,120 @@ fn set_block(chunks: &mut [Chunk], x: usize, y: usize, z: usize, block: BlockTyp
     let local_y = y % CHUNK_SIZE;
     if chunk_index < chunks.len() {
         chunks[chunk_index].set(x, local_y, z, block);
+    }
+}
+
+/// Generate a 64³ LOD super-chunk by sampling terrain noise at `voxel_size` spacing.
+/// `origin` is the world-space block coordinate of the super-chunk corner.
+/// Each voxel represents `voxel_size³` world blocks.
+pub fn generate_lod_super_chunk(origin: [i32; 3], voxel_size: u32, seed: u32) -> LodVoxelGrid {
+    let noises = WorldNoises::new(seed);
+    let vs = voxel_size as f64;
+    let grid_size = CHUNK_SIZE * 4; // 64
+    let mut blocks = vec![BlockType::Air; grid_size * grid_size * grid_size];
+
+    for gz in 0..grid_size {
+        for gx in 0..grid_size {
+            let wx = origin[0] as f64 + gx as f64 * vs;
+            let wz = origin[2] as f64 + gz as f64 * vs;
+
+            let warped_x = wx + noises.warp_x.get([wx, wz]) * WARP_STRENGTH;
+            let warped_z = wz + noises.warp_z.get([wx, wz]) * WARP_STRENGTH;
+
+            let temperature = noises.temperature.get([warped_x, warped_z]);
+            let humidity = noises.humidity.get([warped_x, warped_z]);
+            let height = sample_height(&noises, warped_x, warped_z, temperature);
+            let biome = biome::determine_biome(temperature, humidity, height, SEA_LEVEL);
+            let surface = biome::surface_block(biome);
+            let subsurface = biome::subsurface_block(biome);
+
+            for gy in 0..grid_size {
+                let wy = origin[1] as f64 + gy as f64 * vs;
+                // Sample height at the TOP of the voxel. A coarse voxel is only solid
+                // if terrain reaches its top. This makes the LOD surface always at or
+                // below the true height. At LOD boundaries the step goes DOWN (exposing
+                // a top face, fully lit) instead of UP (exposing a side face, dark seam).
+                let y_top = (wy + vs - 1.0) as usize;
+                let block = sample_block(y_top, height, surface, subsurface, &noises, wx, wy + vs * 0.5, wz);
+                blocks[gx + gz * grid_size + gy * grid_size * grid_size] = block;
+            }
+        }
+    }
+
+    // Strip underground: keep only the top SURFACE_DEPTH solid voxels per column.
+    // LOD chunks are only seen from above — removing underground reduces SVDAG size.
+    const SURFACE_DEPTH: usize = 2;
+    for gz in 0..grid_size {
+        for gx in 0..grid_size {
+            let col = gx + gz * grid_size;
+            let mut top = 0;
+            for gy in (0..grid_size).rev() {
+                if blocks[col + gy * grid_size * grid_size] != BlockType::Air {
+                    top = gy;
+                    break;
+                }
+            }
+            if top >= SURFACE_DEPTH {
+                for gy in 0..top - SURFACE_DEPTH {
+                    blocks[col + gy * grid_size * grid_size] = BlockType::Air;
+                }
+            }
+        }
+    }
+
+    LodVoxelGrid { blocks, size: grid_size }
+}
+
+/// Sample a single block at world position, using the same logic as full-res terrain.
+fn sample_block(y: usize, height: usize, surface: BlockType, subsurface: BlockType, noises: &WorldNoises, wx: f64, wy: f64, wz: f64) -> BlockType {
+    // Water above surface but below sea level
+    if y > height && y <= SEA_LEVEL {
+        return BlockType::Water;
+    }
+    if y > height + OVERHANG_BAND {
+        return BlockType::Air;
+    }
+
+    // Overhang band: 3D density check
+    let band_bottom = height.saturating_sub(OVERHANG_BAND);
+    let band_top = height + OVERHANG_BAND;
+    if y >= band_bottom && y <= band_top {
+        let base_density = (height as f64 - y as f64) / OVERHANG_BAND as f64;
+        let noise_val = noises.overhang.get([wx * OVERHANG_SCALE, wy * OVERHANG_SCALE, wz * OVERHANG_SCALE]);
+        let density = base_density + noise_val * (OVERHANG_STRENGTH / OVERHANG_BAND as f64);
+        if density <= 0.0 {
+            return BlockType::Air;
+        }
+    }
+
+    // Solid terrain
+    let block = if y >= height {
+        surface
+    } else if y + DIRT_DEPTH > height {
+        subsurface
+    } else {
+        BlockType::Stone
+    };
+
+    // Cave carving (skip near surface)
+    if y >= 1 && y + 5 <= height {
+        let cave_val = noises.cave.get([wx * CAVE_SCALE, wy * CAVE_SCALE, wz * CAVE_SCALE]);
+        if cave_val > CAVE_THRESHOLD {
+            return BlockType::Air;
+        }
+    }
+
+    block
+}
+
+/// A flat 64³ voxel grid for LOD super-chunk generation.
+pub struct LodVoxelGrid {
+    blocks: Vec<BlockType>,
+    size: usize,
+}
+
+impl super::svdag::VoxelSource for LodVoxelGrid {
+    fn get(&self, x: usize, y: usize, z: usize) -> BlockType {
+        self.blocks[x + z * self.size + y * self.size * self.size]
     }
 }

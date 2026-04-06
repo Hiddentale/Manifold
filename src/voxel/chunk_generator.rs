@@ -22,7 +22,7 @@ pub struct ChunkGenerator {
 }
 
 impl ChunkGenerator {
-    pub fn new() -> Self {
+    pub fn new(seed: u32) -> Self {
         let (request_tx, request_rx) = crossbeam_channel::unbounded::<[i32; 2]>();
         let (result_tx, result_rx) = crossbeam_channel::unbounded::<GeneratedColumn>();
 
@@ -32,7 +32,7 @@ impl ChunkGenerator {
             let tx = result_tx.clone();
             workers.push(thread::spawn(move || {
                 while let Ok([cx, cz]) = rx.recv() {
-                    let chunks = terrain::generate_column(cx, cz);
+                    let chunks = terrain::generate_column(cx, cz, seed);
                     if tx.send(GeneratedColumn { cx, cz, chunks }).is_err() {
                         break;
                     }
@@ -64,11 +64,6 @@ impl ChunkGenerator {
             results.push(col);
         }
         results
-    }
-
-    /// Cancels a pending request (best-effort — worker may already be generating it).
-    pub fn cancel(&mut self, cx: i32, cz: i32) {
-        self.pending.remove(&[cx, cz]);
     }
 
     /// Returns true if a column is currently queued or being generated.
