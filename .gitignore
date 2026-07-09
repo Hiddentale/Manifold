@@ -9,3 +9,7 @@ world_cache/
 worlds
 debug_log.txt
 docs/bug1_bisection.md
+.manifold-intel.db
+world_generation/
+src/js
+data
