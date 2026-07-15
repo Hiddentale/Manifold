@@ -219,13 +219,13 @@ pub(crate) fn compute_height_from_params(
 /// \> 0 is solid; density <= 0 with `|world| < surface_radius_at_sea_level`
 /// is water; otherwise air. Because density is purely a function of world
 /// position (and noise on direction), terrain is seamless across face edges.
-pub fn generate_column(face: Face, chunk_x: i32, chunk_z: i32, seed: u32, erosion_map: Option<&super::erosion::ErosionMap>) -> Vec<Chunk> {
+pub fn generate_column(chunk_x: i32, chunk_z: i32, seed: u32, erosion_map: Option<&super::erosion::ErosionMap>) -> Vec<Chunk> {
     let noises = WorldNoises::new(seed);
     let mut chunks: Vec<Chunk> = (0..CHUNK_LAYERS).map(|_| Chunk::new(BlockType::Air)).collect();
 
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            fill_density_column(&mut chunks, face, chunk_x, chunk_z, x, z, &noises, erosion_map);
+            fill_density_column(&mut chunks, Face::PosY, chunk_x, chunk_z, x, z, &noises, erosion_map);
         }
     }
 

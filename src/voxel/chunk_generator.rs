@@ -1,6 +1,5 @@
 use super::chunk::Chunk;
 use super::erosion::ErosionMap;
-use super::sphere::Face;
 use super::terrain;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashSet;
@@ -10,42 +9,40 @@ use std::thread;
 const WORKER_COUNT: usize = 4;
 
 pub struct GeneratedColumn {
-    pub face: Face,
-    pub cx: i32,
-    pub cz: i32,
+    pub chunk_x: i32,
+    pub chunk_z: i32,
     pub chunks: Vec<Chunk>,
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 struct ColumnKey {
-    face: Face,
-    cx: i32,
-    cz: i32,
+    chunk_x: i32,
+    chunk_z: i32,
 }
 
 /// Manages background threads that generate terrain columns.
 /// Main thread sends requests, workers generate, main thread receives results.
 pub struct ChunkGenerator {
-    request_tx: Sender<ColumnKey>,
-    result_rx: Receiver<GeneratedColumn>,
+    request_sender: Sender<ColumnKey>,
+    result_receiver: Receiver<GeneratedColumn>,
     pending: HashSet<ColumnKey>,
     _workers: Vec<thread::JoinHandle<()>>,
 }
 
 impl ChunkGenerator {
     pub fn new(seed: u32, erosion_map: Option<Arc<ErosionMap>>) -> Self {
-        let (request_tx, request_rx) = crossbeam_channel::unbounded::<ColumnKey>();
-        let (result_tx, result_rx) = crossbeam_channel::unbounded::<GeneratedColumn>();
+        let (request_sender, request_receiver) = crossbeam_channel::unbounded::<ColumnKey>();
+        let (result_sender, result_receiver) = crossbeam_channel::unbounded::<GeneratedColumn>();
 
         let mut workers = Vec::with_capacity(WORKER_COUNT);
         for _ in 0..WORKER_COUNT {
-            let rx = request_rx.clone();
-            let tx = result_tx.clone();
-            let emap = erosion_map.clone();
+            let request = request_receiver.clone();
+            let result = result_sender.clone();
+            let e_map = erosion_map.clone();
             workers.push(thread::spawn(move || {
-                while let Ok(ColumnKey { face, cx, cz }) = rx.recv() {
-                    let chunks = terrain::generate_column(face, cx, cz, seed, emap.as_deref());
-                    if tx.send(GeneratedColumn { face, cx, cz, chunks }).is_err() {
+                while let Ok(ColumnKey { chunk_x, chunk_z }) = request.recv() {
+                    let chunks = terrain::generate_column(chunk_x, chunk_z, seed, e_map.as_deref());
+                    if result.send(GeneratedColumn { chunk_x, chunk_z, chunks }).is_err() {
                         break;
                     }
                 }
@@ -53,29 +50,28 @@ impl ChunkGenerator {
         }
 
         Self {
-            request_tx,
-            result_rx,
+            request_sender,
+            result_receiver,
             pending: HashSet::new(),
             _workers: workers,
         }
     }
 
     /// Requests generation of a column if not already pending.
-    pub fn request(&mut self, face: Face, cx: i32, cz: i32) {
-        let key = ColumnKey { face, cx, cz };
+    pub fn request(&mut self, chunk_x: i32, chunk_z: i32) {
+        let key = ColumnKey { chunk_x, chunk_z };
         if self.pending.insert(key) {
-            let _ = self.request_tx.send(key);
+            let _ = self.request_sender.send(key);
         }
     }
 
     /// Drains all completed columns (non-blocking). Returns them for the caller to insert.
     pub fn receive(&mut self) -> Vec<GeneratedColumn> {
         let mut results = Vec::new();
-        while let Ok(col) = self.result_rx.try_recv() {
+        while let Ok(col) = self.result_receiver.try_recv() {
             self.pending.remove(&ColumnKey {
-                face: col.face,
-                cx: col.cx,
-                cz: col.cz,
+                chunk_x: col.chunk_x,
+                chunk_z: col.chunk_z,
             });
             results.push(col);
         }
@@ -83,14 +79,17 @@ impl ChunkGenerator {
     }
 
     /// Returns true if a column is currently queued or being generated.
-    pub fn is_pending(&self, face: Face, cx: i32, cz: i32) -> bool {
-        self.pending.contains(&ColumnKey { face, cx, cz })
+    pub fn is_pending(&self, chunk_x: i32, chunk_z: i32) -> bool {
+        self.pending.contains(&ColumnKey { chunk_x, chunk_z })
     }
 }
 
 impl Drop for ChunkGenerator {
     fn drop(&mut self) {
-        // Drop the sender to signal workers to exit
-        // (request_tx is dropped when self is dropped, closing the channel)
+        for worker in self._workers.drain(..) {
+            if let Err(panic) = worker.join() {
+                log::error!("Chunk generator worker panicked: {panic:?}");
+            }
+        }
     }
 }
