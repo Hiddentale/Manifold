@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 pub const TERRAIN_MIN_CY: i32 = 0;
 pub const TERRAIN_MAX_CY: i32 = 47;
-pub const MESH_SHADER_CUTOFF_BLOCKS: f64 = 3200.0;
 
 pub struct World {
     chunks: HashMap<ChunkPos, Chunk>,
@@ -20,7 +19,7 @@ pub struct World {
     pub metric: MetricField,
 }
 
-pub struct WorldDelta {
+pub struct ChunkChanges {
     pub loaded_chunks: Vec<ChunkPos>,
     pub unloaded_chunks: Vec<ChunkPos>,
 }
@@ -34,16 +33,16 @@ impl World {
         }
     }
 
-    pub fn update(&mut self, player_world: DVec3, render_distance: i32) -> WorldDelta {
+    pub fn update(&mut self, player_position: DVec3, render_distance: i32) -> ChunkChanges {
         let mut loaded_chunks: Vec<ChunkPos> = Vec::new();
         let mut unloaded_chunks: Vec<ChunkPos> = Vec::new();
-        let (player_pos, _, _, _) = world_to_chunk_local(player_world);
-        let render_area: HashSet<(i32, i32)> = calculate_render_area(player_pos, render_distance);
+        let (active_chunk, _, _, _) = world_to_chunk_local(player_position);
+        let render_area: HashSet<(i32, i32)> = calculate_render_area(active_chunk, render_distance);
         self.evict_chunks_outside_render_area(&render_area, &mut unloaded_chunks);
         self.request_pending_chunks(&render_area);
         self.render_pending_chunks(&render_area, &mut loaded_chunks);
 
-        WorldDelta {
+        ChunkChanges {
             loaded_chunks,
             unloaded_chunks,
         }
@@ -125,13 +124,13 @@ impl World {
     }
 }
 
-fn calculate_render_area(player_pos: ChunkPos, render_distance: i32) -> HashSet<(i32, i32)> {
+fn calculate_render_area(active_chunk: ChunkPos, render_distance: i32) -> HashSet<(i32, i32)> {
     let mut target_columns: HashSet<(i32, i32)> = HashSet::new();
     if render_distance >= 0 {
         for dz in -render_distance..=render_distance {
             for dx in -render_distance..=render_distance {
-                let chunk_x = player_pos.x + dx;
-                let chunk_z = player_pos.z + dz;
+                let chunk_x = active_chunk.x + dx;
+                let chunk_z = active_chunk.z + dz;
                 target_columns.insert((chunk_x, chunk_z));
             }
         }
@@ -141,11 +140,6 @@ fn calculate_render_area(player_pos: ChunkPos, render_distance: i32) -> HashSet<
 
 fn chunk_in_render_area(render_area: &HashSet<(i32, i32)>, chunk_pos: ChunkPos) -> bool {
     render_area.contains(&(chunk_pos.x, chunk_pos.z))
-}
-
-/// 3D Chebyshev distance from a chunk to the player position.
-pub fn chunk_distance(cx: i32, cy: i32, cz: i32, px: i32, py: i32, pz: i32) -> i32 {
-    (cx - px).abs().max((cy - py).abs()).max((cz - pz).abs())
 }
 
 #[cfg(test)]
