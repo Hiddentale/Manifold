@@ -50,10 +50,10 @@ impl World {
 
     fn evict_chunks_outside_render_area(&mut self, render_area: &HashSet<(i32, i32)>, unloaded_chunks: &mut Vec<ChunkPos>) {
         let chunks: Vec<ChunkPos> = self.chunks.keys().copied().collect();
-        for chunk_pos in chunks {
-            if !chunk_in_render_area(render_area, chunk_pos) {
-                self.chunks.remove(&chunk_pos);
-                unloaded_chunks.push(chunk_pos);
+        for chunk in chunks {
+            if !chunk_in_render_area(render_area, chunk) {
+                self.chunks.remove(&chunk);
+                unloaded_chunks.push(chunk);
             }
         }
     }
@@ -138,12 +138,13 @@ fn calculate_render_area(active_chunk: ChunkPos, render_distance: i32) -> HashSe
     target_columns
 }
 
-fn chunk_in_render_area(render_area: &HashSet<(i32, i32)>, chunk_pos: ChunkPos) -> bool {
-    render_area.contains(&(chunk_pos.x, chunk_pos.z))
+fn chunk_in_render_area(render_area: &HashSet<(i32, i32)>, chunk: ChunkPos) -> bool {
+    render_area.contains(&(chunk.x, chunk.z))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::CHUNK_SIZE;
     use super::*;
     use crate::voxel::grid::ChunkPos;
 
@@ -160,23 +161,65 @@ mod tests {
         assert!(!world.block_solid(above_band, 0, 0, 0));
     }
 
+    // Total number of columns should equal (2r+1)^2, where r is the render distance.
     #[test]
-    fn calculate_render_area_returns_expected_number_of_colums() {}
+    fn render_distance_one_returns_nine_columns() {
+        let active_chunk = ChunkPos { x: 0, y: 0, z: 0 };
+        let render_area = calculate_render_area(active_chunk, 1);
+        assert_eq!(render_area.len(), 9); // 3x3
+    }
 
     #[test]
-    fn null_render_distance_returns_active_chunk() {}
+    fn render_distance_three_returns_forty_nine_columns() {
+        let active_chunk = ChunkPos { x: 0, y: 0, z: 0 };
+        let render_area = calculate_render_area(active_chunk, 3);
+        assert_eq!(render_area.len(), 49); // 7x7
+    }
 
     #[test]
-    fn negative_render_distance_returns_empty() {}
+    fn zero_render_distance_returns_active_chunk() {
+        let active_chunk = ChunkPos { x: 5, y: 0, z: -3 };
+        let render_distance = 0;
+        let render_area = calculate_render_area(active_chunk, render_distance);
+        assert_eq!(render_area, HashSet::from([(5, -3)]));
+    }
 
     #[test]
-    fn illegal_chunk_is_rejected() {}
+    fn negative_render_distance_returns_empty() {
+        let active_chunk = ChunkPos { x: 5, y: 0, z: -3 };
+        let render_distance = -1;
+        let render_area = calculate_render_area(active_chunk, render_distance);
+        assert!(render_area.is_empty());
+    }
 
     #[test]
-    fn legal_chunk_is_accepted() {}
+    fn chunk_outside_render_area_is_rejected() {
+        let active_chunk = ChunkPos { x: 0, y: 0, z: 0 };
+        let render_distance = 2;
+        let render_area = calculate_render_area(active_chunk, render_distance);
+        let chunk = ChunkPos { x: 3, y: 0, z: 5 };
+        assert!(!chunk_in_render_area(&render_area, chunk));
+    }
 
     #[test]
-    fn fully_loaded_column_is_not_rerequested() {}
+    fn chunk_inside_render_area_is_accepted() {
+        let active_chunk = ChunkPos { x: 0, y: 0, z: 0 };
+        let render_distance = 2;
+        let render_area = calculate_render_area(active_chunk, render_distance);
+        let chunk = ChunkPos { x: 1, y: 0, z: 1 };
+        assert!(chunk_in_render_area(&render_area, chunk));
+    }
+
+    #[test]
+    fn fully_loaded_column_is_not_rerequested() {
+        let mut world = World::new(0, None);
+        for cy in TERRAIN_MIN_CY..=TERRAIN_MAX_CY {
+            world.chunks.insert(ChunkPos { x: 0, y: cy, z: 0 }, Chunk::new(BlockType::Air));
+        }
+        let render_distance = 2;
+        let _ = world.update(DVec3::new(0.0, 0.0, 0.0), render_distance);
+        assert!(!world.generator.is_pending(0, 0));
+    }
 
     #[test]
     fn mid_generation_column_is_not_rerequested() {}
@@ -185,5 +228,15 @@ mod tests {
     fn chunk_finished_after_player_moved_away_is_not_inserted() {}
 
     #[test]
-    fn previously_loaded_column_outside_render_distance_is_unloaded() {}
+    fn previously_loaded_column_outside_render_distance_is_unloaded() {
+        let mut world = World::new(0, None);
+        let column = ChunkPos { x: 0, y: 0, z: 0 };
+        for cy in TERRAIN_MIN_CY..=TERRAIN_MAX_CY {
+            world.chunks.insert(ChunkPos { x: 0, y: cy, z: 0 }, Chunk::new(BlockType::Air));
+        }
+        let render_distance = 2;
+        let far_chunk_x = render_distance + 5;
+        let chunk_changes = world.update(DVec3::new((far_chunk_x * CHUNK_SIZE as i32) as f64, 0.0, 0.0), render_distance);
+        assert!(chunk_changes.unloaded_chunks.contains(&column));
+    }
 }
