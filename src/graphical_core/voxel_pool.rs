@@ -2,7 +2,7 @@
 use crate::graphical_core::buffers::allocate_buffer;
 use crate::graphical_core::vulkan_object::VulkanApplicationData;
 use crate::voxel::chunk::{Chunk, CHUNK_SIZE};
-use crate::voxel::sphere::{self, ChunkPos};
+use crate::voxel::grid::{self, ChunkPos};
 use crate::voxel::world::World;
 use std::collections::HashMap;
 use vulkan_rust::{vk, Device, Instance};

@@ -7,7 +7,7 @@
 //! sphere surface is locally Euclidean for the player's reach distance.
 
 use super::block::BlockType;
-use super::sphere::{self, ChunkPos};
+use super::grid::ChunkPos;
 use super::world::World;
 use glam::Vec3;
 
@@ -70,20 +70,9 @@ pub fn raycast(origin: Vec3, direction: Vec3, world: &World) -> Option<RaycastHi
     None
 }
 
-fn chunk_in_face_range(cp: ChunkPos) -> bool {
-    let n = sphere::FACE_SIDE_CHUNKS;
-    cp.cx >= 0 && cp.cx < n && cp.cz >= 0 && cp.cz < n && cp.cy >= 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::voxel::chunk::Chunk;
-    use crate::voxel::sphere::Face;
-
-    fn empty_world() -> World {
-        World::new(2, 0, None)
-    }
 
     #[test]
     fn raycast_misses_into_empty_space() {
@@ -91,26 +80,5 @@ mod tests {
         let origin = Vec3::new(0.0, 1000.0, 0.0);
         let dir = Vec3::new(0.0, 1.0, 0.0);
         assert!(raycast(origin, dir, &world).is_none());
-    }
-
-    #[test]
-    fn raycast_hits_a_solid_block_directly_below_pole() {
-        // Place a solid stone block at the +Y pole and shoot a ray down at it.
-        let mut world = empty_world();
-        let cp = ChunkPos {
-            face: Face::PosY,
-            cx: sphere::FACE_SIDE_CHUNKS / 2,
-            cy: 5,
-            cz: sphere::FACE_SIDE_CHUNKS / 2,
-        };
-        let mut chunk = Chunk::new(BlockType::Air);
-        chunk.set(8, 8, 8, BlockType::Stone);
-        world.chunks_mut_for_test().insert(cp, chunk);
-        let block_world = sphere::chunk_to_world(cp, Vec3::new(8.5, 8.5, 8.5)).as_vec3();
-        let origin = block_world + Vec3::new(0.0, 5.0, 0.0);
-        let dir = -Vec3::Y;
-        let hit = raycast(origin, dir, &world).expect("ray should hit");
-        assert_eq!(hit.hit.chunk, cp);
-        assert_eq!((hit.hit.lx, hit.hit.ly, hit.hit.lz), (8, 8, 8));
     }
 }

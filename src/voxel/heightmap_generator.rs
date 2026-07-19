@@ -1,7 +1,6 @@
 use super::block::BlockType;
 use super::erosion::ErosionMap;
 use super::heightmap_quadtree::{QuadNode, HEIGHT_PAGE_SIZE};
-use super::sphere::{self, CUBE_HALF_BLOCKS, PLANET_RADIUS_BLOCKS};
 use super::terrain::{self, WorldNoises, SEA_LEVEL};
 use crossbeam_channel::{Receiver, Sender};
 use std::sync::Arc;

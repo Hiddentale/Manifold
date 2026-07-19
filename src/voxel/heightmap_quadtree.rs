@@ -17,7 +17,6 @@
 
 #![allow(dead_code)] // Wired up incrementally across phases.
 
-use super::sphere::{face_basis, face_for_cube_point, face_local_to_world, EdgeDir, Face, ALL_FACES, CUBE_HALF_BLOCKS, FACE_SIDE_BLOCKS};
 use glam::DVec3;
 
 /// Side length, in blocks, of the finest (deepest) quadtree leaf. Determines
