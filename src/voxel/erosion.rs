@@ -110,7 +110,7 @@ pub fn generate_erosion_map(size: usize, cell_size: f32, seed: u32, iterations: 
             let c = noises.continentalness.get(p);
             let e = noises.erosion_noise.get(p);
             let w = noises.weirdness.get(p);
-            let h = super::terrain::compute_height_from_params(&noises, face, warped_x, warped_z, c, e, w);
+            let h = super::terrain::compute_height_from_params(&noises, warped_x, warped_z, c, e, w);
             terrain.push(h as f32);
         }
     }
