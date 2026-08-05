@@ -123,14 +123,14 @@ fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64, erosion_map: 
     let weirdness = noises.weirdness.get(warped_coordinates);
     let temperature = noises.temperature.get(warped_coordinates);
     let humidity = noises.humidity.get(warped_coordinates);
-    let mut world_y = compute_height_from_params(noises, warped_x, warped_z, continentalness, erosion, weirdness);
+    let mut surface_height = compute_height_from_params(noises, warped_x, warped_z, continentalness, erosion, weirdness);
 
     if let Some(emap) = erosion_map {
         let delta = emap.sample(world_x, world_z);
-        world_y = (world_y as f64 + delta).clamp(MIN_HEIGHT as f64, MAX_HEIGHT as f64) as usize;
+        surface_height = (surface_height as f64 + delta).clamp(MIN_HEIGHT as f64, MAX_HEIGHT as f64) as usize;
     }
 
-    let biome = biome::determine_biome(continentalness, temperature, humidity, erosion, weirdness, world_y, SEA_LEVEL);
+    let biome = biome::determine_biome(continentalness, temperature, humidity, erosion, weirdness, surface_height, SEA_LEVEL);
 
     TerrainParams {
         continentalness,
@@ -138,7 +138,7 @@ fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64, erosion_map: 
         weirdness,
         temperature,
         humidity,
-        world_y,
+        surface_height,
         biome,
     }
 }
@@ -268,7 +268,7 @@ fn find_blocktype(world_x: f64, world_y: f64, world_z: f64, height: usize, surfa
         };
     }
     
-    let depth_from_surface = height - world_y;
+    let depth_from_surface = (height as f64 - world_y).max(0.0).round() as usize;
     let block = if depth_from_surface < SURFACE_DEPTH {
         surface
     } else if depth_from_surface < DIRT_DEPTH {
@@ -290,42 +290,41 @@ fn find_blocktype(world_x: f64, world_y: f64, world_z: f64, height: usize, surfa
 /// Generate a 64³ LOD super-chunk by sampling terrain noise at `voxel_size` spacing.
 pub fn generate_lod_super_chunk(origin: [i32; 3], voxel_size: u32, seed: u32, erosion_map: Option<&super::erosion::ErosionMap>) -> LodVoxelGrid {
     let noises = WorldNoises::new(seed);
-    let vs = voxel_size as f64;
-    let grid_size = CHUNK_SIZE * 4; // 64
+    let voxel_size = voxel_size as f64;
+    let grid_size = CHUNK_SIZE * 4;
     let mut blocks = vec![BlockType::Air; grid_size * grid_size * grid_size];
 
-    for gz in 0..grid_size {
-        for gx in 0..grid_size {
-            let wx = origin[0] as f64 + gx as f64 * vs;
-            let wz = origin[2] as f64 + gz as f64 * vs;
-            let params = sample_params(&noises, wx, wz, erosion_map);
+    for grid_z in 0..grid_size {
+        for grid_x in 0..grid_size {
+            let world_x = origin[0] as f64 + grid_x as f64 * voxel_size;
+            let world_z = origin[2] as f64 + grid_z as f64 * voxel_size;
+            let params = sample_params(&noises, world_x, world_z, erosion_map);
             let surface = biome::surface_block(params.biome);
             let subsurface = biome::subsurface_block(params.biome);
 
-            for gy in 0..grid_size {
-                let wy = origin[1] as f64 + gy as f64 * vs;
-                let y_top = (wy + vs - 1.0) as usize;
-                let block = sample_block(y_top, params.height, surface, subsurface, &noises, wx, wy + vs * 0.5, wz);
-                blocks[gx + gz * grid_size + gy * grid_size * grid_size] = block;
+            for grid_y in 0..grid_size {
+                let world_y = origin[1] as f64 + grid_y as f64 * voxel_size;
+                let y_top = (world_y + voxel_size - 1.0) as usize;
+                let block = sample_block(y_top, params.surface_height, surface, subsurface, &noises, world_x, world_y + voxel_size * 0.5, world_z);
+                blocks[grid_x + grid_z * grid_size + grid_y * grid_size * grid_size] = block;
             }
         }
     }
 
-    // Strip underground: keep only top SURFACE_DEPTH solid voxels per column.
     const SURFACE_DEPTH: usize = 2;
-    for gz in 0..grid_size {
-        for gx in 0..grid_size {
-            let col = gx + gz * grid_size;
+    for grid_z in 0..grid_size {
+        for grid_x in 0..grid_size {
+            let column = grid_x + grid_z * grid_size;
             let mut top = 0;
-            for gy in (0..grid_size).rev() {
-                if blocks[col + gy * grid_size * grid_size] != BlockType::Air {
-                    top = gy;
+            for grid_y in (0..grid_size).rev() {
+                if blocks[column + grid_y * grid_size * grid_size] != BlockType::Air {
+                    top = grid_y;
                     break;
                 }
             }
             if top >= SURFACE_DEPTH {
-                for gy in 0..top - SURFACE_DEPTH {
-                    blocks[col + gy * grid_size * grid_size] = BlockType::Air;
+                for grid_y in 0..top - SURFACE_DEPTH {
+                    blocks[column + grid_y * grid_size * grid_size] = BlockType::Air;
                 }
             }
         }
