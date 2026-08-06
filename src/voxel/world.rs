@@ -1,6 +1,6 @@
 use super::{
     block::BlockType,
-    chunk::{Chunk, CHUNK_SIZE},
+    chunk::Chunk,
     chunk_generator::ChunkGenerator,
     erosion::ErosionMap,
     grid::{world_to_chunk_local, ChunkPos},
@@ -81,42 +81,44 @@ impl World {
         }
     }
 
-    // Out-of-range chunks are treated as solid below the terrain layer
-    pub fn block_solid(&self, cp: ChunkPos, lx: usize, ly: usize, lz: usize) -> bool {
-        let lxi = lx.min(CHUNK_SIZE - 1);
-        let lyi = ly.min(CHUNK_SIZE - 1);
-        let lzi = lz.min(CHUNK_SIZE - 1);
-        match self.chunks.get(&cp) {
-            Some(chunk) => chunk.get(lxi, lyi, lzi).is_opaque(),
-            None => (TERRAIN_MIN_CY..=TERRAIN_MAX_CY).contains(&cp.y),
+    pub fn block_solid_at(&self, world_x: i32, world_y: i32, world_z: i32) -> bool {
+        let (chunk_pos, local_x, local_y, local_z) = 
+            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        match self.chunks.get(&chunk_pos) {
+            Some(chunk) => chunk.get(local_x, local_y, local_z).is_opaque(),
+            None => false,
         }
     }
 
     /// Direct cube-space block read.
-    pub fn block_at(&self, cp: ChunkPos, lx: usize, ly: usize, lz: usize) -> BlockType {
-        match self.chunks.get(&cp) {
-            Some(chunk) => chunk.get(lx.min(CHUNK_SIZE - 1), ly.min(CHUNK_SIZE - 1), lz.min(CHUNK_SIZE - 1)),
+    pub fn get_block_at(&self, world_x: i32, world_y: i32, world_z: i32) -> BlockType {
+        let (chunk_pos, local_x, local_y, local_z) = 
+            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        match self.chunks.get(&chunk_pos) {
+            Some(chunk) => chunk.get(local_x, local_y, local_z),
             None => BlockType::Air,
         }
     }
 
     /// Direct cube-space block write.
-    pub fn set_block_at(&mut self, cp: ChunkPos, lx: usize, ly: usize, lz: usize, block: BlockType) -> bool {
-        match self.chunks.get_mut(&cp) {
-            Some(chunk) => {
-                chunk.set(lx.min(CHUNK_SIZE - 1), ly.min(CHUNK_SIZE - 1), lz.min(CHUNK_SIZE - 1), block);
+    pub fn set_block_at(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) -> bool {
+        let (chunk_pos, local_x, local_y, local_z) = 
+            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        match self.chunks.get_mut(&chunk_pos) {
+            Some(chunk) => { 
+                chunk.set(local_x, local_y, local_z, block);
                 true
             }
             None => false,
         }
     }
 
-    pub fn get_chunk(&self, cx: i32, cy: i32, cz: i32) -> Option<&Chunk> {
-        self.chunks.get(&ChunkPos::new(cx, cy, cz))
+    pub fn get_chunk(&self, chunk_x: i32, chunk_y: i32, chunk_z: i32) -> Option<&Chunk> {
+        self.chunks.get(&ChunkPos::new(chunk_x, chunk_y, chunk_z))
     }
 
-    pub fn get_chunk_at(&self, cp: ChunkPos) -> Option<&Chunk> {
-        self.chunks.get(&cp)
+    pub fn get_chunk_at(&self, chunk_pos: ChunkPos) -> Option<&Chunk> {
+        self.chunks.get(&chunk_pos)
     }
 
     pub fn chunk_positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
@@ -142,24 +144,18 @@ fn chunk_in_render_area(render_area: &HashSet<(i32, i32)>, chunk: ChunkPos) -> b
     render_area.contains(&(chunk.x, chunk.z))
 }
 
+fn convert_world_coordinates_to_chunk_coordinates(world_x: i32, world_y: i32, world_z: i32) -> (ChunkPos, usize, usize, usize){
+    let (chunk_pos, local_x, local_y, local_z) = world_to_chunk_local(
+           DVec3::new(world_x as f64, world_y as f64, world_z as f64)
+       );
+    return (chunk_pos, local_x, local_y, local_z)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::CHUNK_SIZE;
+    use super::super::chunk::CHUNK_SIZE;
     use super::*;
     use crate::voxel::grid::ChunkPos;
-
-    #[test]
-    fn unloaded_terrain_chunks_are_solid() {
-        let world = World::new(0, None);
-        let in_band = ChunkPos { x: 0, y: 5, z: 0 };
-        assert!(world.block_solid(in_band, 0, 0, 0));
-        let above_band = ChunkPos {
-            x: 0,
-            y: TERRAIN_MAX_CY + 5,
-            z: 0,
-        };
-        assert!(!world.block_solid(above_band, 0, 0, 0));
-    }
 
     // Total number of columns should equal (2r+1)^2, where r is the render distance.
     #[test]

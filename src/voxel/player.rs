@@ -1,6 +1,6 @@
 //! Player state.
 
-use crate::voxel::{grid::ChunkPos, world::World}; 
+use crate::voxel::{grid::{ChunkPos, chunk_to_world}, world::World}; 
 use glam::Vec3;
 
 const GRAVITY: f32 = 20.0;
@@ -53,7 +53,7 @@ impl Player {
 
     /// Cartesian body-center position.
     pub fn world_position(&self) -> Vec3 {
-        super::grid::chunk_to_world(
+        chunk_to_world(
             self.chunk_pos(),
             Vec3::new(self.local_x, self.local_y, self.local_z)).as_vec3()
     }
@@ -87,8 +87,8 @@ impl Player {
         todo!()
     }
 
-    fn sample_block_solid() -> bool {
-        todo!()
+    fn sample_block_solid(block_x: i32, block_y: i32, block_z: i32, world: &World) -> bool {
+        world.get_block(block_x, block_y, block_z).is_solid()
     }
 
     pub fn jump(&mut self) {

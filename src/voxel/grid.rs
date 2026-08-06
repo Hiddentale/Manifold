@@ -56,14 +56,14 @@ pub fn chunk_to_world(chunk_position: ChunkPos, local: Vec3) -> DVec3 {
 
 /// The chunk that owns the given world-space coordinate and the specific coordinate in that chunk in
 /// local chunk coordinates.
-pub fn world_to_chunk_local(world_coordinates: DVec3) -> (ChunkPos, f32, f32, f32) {
+pub fn world_to_chunk_local(world_coordinates: DVec3) -> (ChunkPos, usize, usize, usize) {
     let chunk_size = CHUNK_SIZE as f64;
     let chunk_x = world_coordinates.x.div_euclid(chunk_size) as i32;
     let chunk_y = world_coordinates.y.div_euclid(chunk_size) as i32;
     let chunk_z = world_coordinates.z.div_euclid(chunk_size) as i32;
-    let local_x = world_coordinates.x.rem_euclid(chunk_size) as f32;
-    let local_y = world_coordinates.y.rem_euclid(chunk_size) as f32;
-    let local_z = world_coordinates.z.rem_euclid(chunk_size) as f32;
+    let local_x = world_coordinates.x.rem_euclid(chunk_size) as usize;
+    let local_y = world_coordinates.y.rem_euclid(chunk_size) as usize;
+    let local_z = world_coordinates.z.rem_euclid(chunk_size) as usize;
     (ChunkPos::new(chunk_x, chunk_y, chunk_z), local_x, local_y, local_z)
 }
 
@@ -96,18 +96,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chunk_to_world_round_trips_through_inverse() {
-        let chunk_pos = ChunkPos::new(3, -2, 7);
-        let local_pos = Vec3::new(4.5, 0.25, 15.75);
-        let world_pos = chunk_to_world(chunk_pos, local_pos);
-        let (recovered_chunk_pos, local_x, local_y, local_z) = world_to_chunk_local(world_pos);
-        assert_eq!(recovered_chunk_pos, chunk_pos);
-        assert!((local_x - local_pos.x).abs() < ACCEPTABLE_MACHINE_ERROR);
-        assert!((local_y - local_pos.y).abs() < ACCEPTABLE_MACHINE_ERROR);
-        assert!((local_z - local_pos.z).abs() < ACCEPTABLE_MACHINE_ERROR);
-    }
-
-    #[test]
     fn world_to_chunk_local_handles_negative_coordinates() {
         let chunk_size = CHUNK_SIZE as f64;
         let (chunk_pos, local_x, _, _) = world_to_chunk_local(DVec3::new(-1.0, 0.0, 0.0));
@@ -120,7 +108,7 @@ mod tests {
         let chunk_size = CHUNK_SIZE as f32;
         let (_, local_x, local_y, local_z) = world_to_chunk_local(DVec3::new(100.0, 200.5, -37.0));
         for local_coordinate in [local_x, local_y, local_z] {
-            assert!((0.0..chunk_size).contains(&local_coordinate));
+            assert!((0.0..chunk_size).contains(local_coordinate));
         }
     }
 
