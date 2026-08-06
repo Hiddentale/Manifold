@@ -53,15 +53,34 @@ impl Player {
         self.right
     }
 
-    pub fn apply_physics(&mut self, dt: f32, world: &World) {
-        todo!()
+    pub fn apply_physics(&mut self, dt: f32, player: &Player, world: &World) {
+        self.velocity.y -= GRAVITY * dt;
+        // Might have issue here where if we jump and hit a ceiling, can_move will give us false?
+        if !self.can_move(0.0, self.velocity.y * dt, 0.0, player, world) {
+            self.velocity.y = 0.0;
+            self.on_ground = true;
+        }
+    }
+
+    pub fn can_move(&mut self, dx: f32, dy: f32, dz: f32, player: &Player, world: &World) -> bool {
+            let old_x = self.x;
+            let old_y = self.y;
+            let old_z = self.z;
+            
+            self.x += dx;
+            self.y += dy;
+            self.z += dz;
+            
+            if self.capsule_collides(player, world) {
+                self.x = old_x;
+                self.y = old_y;
+                self.z = old_z;
+                return false;
+            }
+            true
     }
 
     pub fn walk(&mut self, direction: Vec3, world: &World) {
-        todo!()
-    }
-
-    pub fn try_axis(&mut self, dx: f32, dy: f32, dz: f32, world: &World) -> bool {
         todo!()
     }
 
@@ -69,7 +88,7 @@ impl Player {
         todo!()
     }
 
-    pub fn capsule_collides(player: &Player, world: &World) -> bool {
+    pub fn capsule_collides(&self, player: &Player, world: &World) -> bool {
         let angles = [0.0, std::f32::consts::PI / 2.0, std::f32::consts::PI, 3.0 * std::f32::consts::PI / 2.0];
             
         for y_offset in [0.0, 0.85, player.height] {
