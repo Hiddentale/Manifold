@@ -1,21 +1,18 @@
 //! Player state.
 
-use crate::voxel::{grid::{ChunkPos, chunk_to_world}, world::World}; 
+use crate::voxel::world::World; 
 use glam::Vec3;
 
 const GRAVITY: f32 = 20.0;
 const JUMP_VELOCITY: Vec3 = Vec3::new(0.0, 8.0, 0.0);
-const PLAYER_HEIGHT: f32 = 1.7;
-const PLAYER_HALF_WIDTH: f32 = 0.3;
 const CAMERA_FORWARD_OFFSET: f32 = 0.25;
 
 pub struct Player {
-    pub chunk_x: i32,
-    pub chunk_y: i32,
-    pub chunk_z: i32,
-    pub local_x: f32,
-    pub local_y: f32,
-    pub local_z: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub height: f32,
+    pub half_width: f32,
     pub forward: Vec3,
     pub right: Vec3,
     pub velocity: Vec3,
@@ -29,12 +26,11 @@ impl Player {
         let right = Vec3::new(0.0, 0.0, -1.0);
         let velocity = Vec3::new(0.0, 0.0, 0.0);
         Self {
-            chunk_x: 0,
-            chunk_y: 90,
-            chunk_z: 0,
-            local_x: 8.0,
-            local_y: 8.0,
-            local_z: 8.0,
+            x: 0.0,
+            y: 90.0,
+            z: 0.0,
+            height: 1.7,
+            half_width: 0.3,
             forward,
             right,
             velocity,
@@ -43,19 +39,9 @@ impl Player {
         }
     }
 
-    pub fn chunk_pos(&self) -> ChunkPos {
-        ChunkPos {
-            x: self.chunk_x,
-            y: self.chunk_y,
-            z: self.chunk_z,
-        }
-    }
-
     /// Cartesian body-center position.
     pub fn world_position(&self) -> Vec3 {
-        chunk_to_world(
-            self.chunk_pos(),
-            Vec3::new(self.local_x, self.local_y, self.local_z)).as_vec3()
+        Vec3::new(self.x, self.y, self.z)
     }
 
     /// Cartesian eye position.
@@ -84,11 +70,19 @@ impl Player {
     }
 
     pub fn capsule_collides(player: &Player, world: &World) -> bool {
-        todo!()
-    }
-
-    fn sample_block_solid(block_x: i32, block_y: i32, block_z: i32, world: &World) -> bool {
-        world.get_block(block_x, block_y, block_z).is_solid()
+        let angles = [0.0, std::f32::consts::PI / 2.0, std::f32::consts::PI, 3.0 * std::f32::consts::PI / 2.0];
+            
+        for y_offset in [0.0, 0.85, player.height] {
+            for &angle in &angles {
+                let dx = (angle.cos() * player.half_width).round() as i32;
+                let dz = (angle.sin() * player.half_width).round() as i32;
+                    
+                if block_is_solid(player.x as i32 + dx, (player.y + y_offset) as i32, player.z as i32 + dz, world) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn jump(&mut self) {
@@ -102,6 +96,11 @@ impl Player {
         todo!()
     }
 
+}
+
+
+fn block_is_solid(block_x: i32, block_y: i32, block_z: i32, world: &World) -> bool {
+    world.block_solid_at(block_x, block_y, block_z)
 }
 
 #[cfg(test)]

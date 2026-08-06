@@ -1,10 +1,4 @@
 //! Cube-space raycast for block selection (break / place).
-//!
-//! The flat-grid DDA was retired in Phase D'. The cube-space replacement
-//! steps a small fixed distance in world space and asks the world about
-//! the block under each sample. Skips duplicate samples so each integer
-//! block is tested at most once. Reach is a Euclidean cap because the
-//! sphere surface is locally Euclidean for the player's reach distance.
 
 use super::block::BlockType;
 use super::grid::ChunkPos;
