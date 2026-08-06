@@ -24,11 +24,8 @@ use crate::graphical_core::{
 use crate::storage::region::RegionStore;
 use crate::voxel::chunk::{Chunk, CHUNK_SIZE};
 use crate::voxel::erosion::ErosionMap;
-use crate::voxel::heightmap_generator::{HeightsGenerator, HeightsRequest};
-use crate::voxel::heightmap_quadtree::{Quadtree, MAX_RESIDENT_TILES};
 use crate::voxel::svdag_compressor::SvdagCompressor;
 use crate::voxel::world::World;
-use crate::vr::{VrContext, VrSession, VrSwapchain};
 use crate::VALIDATION_ENABLED;
 use anyhow::anyhow;
 use log::info;
@@ -131,8 +128,6 @@ pub struct WorldResources {
     lod_idle_frames: u32,
     heightmap_atlas: HeightmapAtlas,
     heightmap_tile_pipeline: HeightmapTilePipeline,
-    heightmap_quadtree: Quadtree,
-    heights_generator: HeightsGenerator,
     heights_in_flight: std::collections::HashSet<u64>,
     /// Number of valid `GpuTileDesc` rows packed into the TileDesc buffer
     /// this frame. Used as `tile_count` in the cull push constants and to
@@ -151,8 +146,6 @@ pub struct VulkanApplication {
     pub(crate) resized: bool,
     depth_pyramid_pipeline: DepthPyramidResources,
     depth_pyramid_needs_init: bool,
-    _vr_session: Option<VrSession>,
-    _vr_swapchain: Option<VrSwapchain>,
     /// None when in the menu, Some when a world is loaded.
     wr: Option<WorldResources>,
     pub ui: UiPipeline,
@@ -250,66 +243,8 @@ impl VulkanApplication {
         self.wr.as_ref().is_none_or(|wr| wr.lod_idle_frames >= 3)
     }
 
-    /// Set a single block in cube space and re-upload its chunk (and any
-    /// neighbor chunks whose boundary slice depends on it). Used by the
-    /// raycast-driven place / break inputs.
-    pub unsafe fn set_block_at(
-        &mut self,
-        cp: crate::voxel::sphere::ChunkPos,
-        lx: usize,
-        ly: usize,
-        lz: usize,
-        block: crate::voxel::block::BlockType,
-    ) {
-        let Some(wr) = self.wr.as_mut() else { return };
-        if !wr.world.set_block_at(cp, lx, ly, lz, block) {
-            return;
-        }
-        if let Some(chunk) = wr.world.get_chunk_at(cp) {
-            let chunk_ptr: *const crate::voxel::chunk::Chunk = chunk;
-            wr.voxel_pool.reupload_chunk(cp, &*chunk_ptr, &wr.world);
-            wr.voxel_pool.invalidate_neighbor_boundaries(cp, &wr.world);
-        }
-    }
-
     pub fn swapchain_extent(&self) -> vk::Extent2D {
         self.vulkan_application_data.swapchain_extent
-    }
-
-    pub fn has_vr(&self) -> bool {
-        self._vr_session.is_some()
-    }
-
-    /// Poll OpenXR events and handle session state transitions.
-    /// Returns `false` if the VR session should be abandoned.
-    pub fn poll_vr_events(&mut self) -> anyhow::Result<bool> {
-        match &mut self._vr_session {
-            Some(session) => session.poll_events(),
-            None => Ok(true),
-        }
-    }
-
-    /// Run one VR frame. Returns eye matrices if the headset rendered.
-    ///
-    /// # Safety
-    /// Calls unsafe Vulkan and OpenXR APIs.
-    pub unsafe fn render_vr_frame(&mut self) -> anyhow::Result<Option<EyeMatrices>> {
-        let (Some(session), Some(swapchain)) = (&mut self._vr_session, &mut self._vr_swapchain) else {
-            return Ok(None);
-        };
-        let wr = match &self.wr {
-            Some(wr) => wr,
-            None => return Ok(None),
-        };
-        crate::vr::frame::render_vr_frame(
-            &self.device,
-            &self.vulkan_application_data,
-            session,
-            swapchain,
-            &wr.mesh_shader_pipeline,
-            &wr.cull_compact_pipeline,
-            &wr.voxel_pool,
-        )
     }
 }
 
@@ -371,8 +306,8 @@ impl VulkanApplication {
     ///
     /// # Safety
     /// Calls unsafe Vulkan APIs.
-    pub unsafe fn enter_world(&mut self, world_dir: &std::path::Path, seed: u32, erosion_map: Option<Arc<ErosionMap>>) -> anyhow::Result<()> {
-        let mut world = World::new(WORLD_DISTANCE, seed, erosion_map.clone());
+    pub unsafe fn enter_world(&mut self, world_dir: &std::path::Path, seed: u32) -> anyhow::Result<()> {
+        let mut world = World::new(seed);
         // Spawn point is just above the +Y pole; the streamer needs a real
         // world position so it knows which face neighborhood to load.
         let spawn = glam::DVec3::new(0.0, crate::voxel::sphere::SURFACE_RADIUS_BLOCKS as f64, 0.0);

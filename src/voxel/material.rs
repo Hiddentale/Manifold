@@ -1,7 +1,4 @@
 /// GPU-side material palette entry. Must match the GLSL `MaterialEntry` layout (std140).
-///
-/// Each `vec3` is followed by a `float` to avoid the std140 padding trap where
-/// a standalone `vec3` rounds up to 16 bytes.
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct MaterialEntry {

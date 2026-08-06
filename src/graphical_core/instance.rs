@@ -1,5 +1,4 @@
 use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::vr::VrContext;
 use crate::{graphical_core, DEVICE_EXTENSIONS, PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER};
 use anyhow::anyhow;
 use log::{debug, error, info, trace, warn};
@@ -10,7 +9,6 @@ use vulkan_rust::{required_extensions, vk, Device, Entry, Instance, Version};
 use winit::window::Window;
 
 /// Creates a Vulkan instance with validation layers and debug messaging if enabled.
-/// When VR is available, adds OpenXR-required instance extensions.
 pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut VulkanApplicationData, vr: Option<&VrContext>) -> anyhow::Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
         .application_name(c"Vulkan Tutorial")
@@ -83,12 +81,10 @@ pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut Vulkan
 }
 
 /// Creates a logical device with graphics and presentation queues.
-/// When VR is available, adds OpenXR-required device extensions.
 pub unsafe fn create_logical_device(
     entry: &Entry,
     instance: &Instance,
     data: &mut VulkanApplicationData,
-    vr: Option<&VrContext>,
 ) -> anyhow::Result<Device> {
     let indices = graphical_core::queue_families::RequiredQueueFamilies::get(instance, data, data.physical_device)?;
     let mut unique_indices = HashSet::new();

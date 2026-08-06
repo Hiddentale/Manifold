@@ -112,7 +112,7 @@ struct TerrainParams {
     biome: Biome,
 }
 
-fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64, erosion_map: Option<&super::erosion::ErosionMap>) -> TerrainParams {
+fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64) -> TerrainParams {
     let initial_coordinates = [world_x, 0.0, world_z];
     let warped_x = world_x + noises.warp_x.get(initial_coordinates) * WARP_STRENGTH;
     let warped_z = world_z + noises.warp_z.get(initial_coordinates) * WARP_STRENGTH;
@@ -124,11 +124,6 @@ fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64, erosion_map: 
     let temperature = noises.temperature.get(warped_coordinates);
     let humidity = noises.humidity.get(warped_coordinates);
     let mut surface_height = compute_height_from_params(noises, warped_x, warped_z, continentalness, erosion, weirdness);
-
-    if let Some(emap) = erosion_map {
-        let delta = emap.sample(world_x, world_z);
-        surface_height = (surface_height as f64 + delta).clamp(MIN_HEIGHT as f64, MAX_HEIGHT as f64) as usize;
-    }
 
     let biome = biome::determine_biome(continentalness, temperature, humidity, erosion, weirdness, surface_height, SEA_LEVEL);
 
@@ -217,13 +212,13 @@ pub(crate) fn compute_height_from_params(noises: &WorldNoises, x: f64, z: f64, c
 
 /// Generates a full column of chunks by evaluating a density function at
 /// every block.
-pub fn generate_column(chunk_x: i32, chunk_z: i32, seed: u32, erosion_map: Option<&super::erosion::ErosionMap>) -> Vec<Chunk> {
+pub fn generate_column(chunk_x: i32, chunk_z: i32, seed: u32) -> Vec<Chunk> {
     let noises = WorldNoises::new(seed);
     let mut chunks: Vec<Chunk> = (0..CHUNK_LAYERS).map(|_| Chunk::new(BlockType::Air)).collect();
 
     for z in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            fill_density_column(&mut chunks, chunk_x, chunk_z, x, z, &noises, erosion_map);
+            fill_density_column(&mut chunks, chunk_x, chunk_z, x, z, &noises);
         }
     }
 
@@ -237,11 +232,10 @@ fn fill_density_column(
     x: usize,
     z: usize,
     noises: &WorldNoises,
-    erosion_map: Option<&super::erosion::ErosionMap>,
 ) {
     let world_x = chunk_x as f64 * CHUNK_SIZE as f64 + x as f64 + 0.5;
     let world_z = chunk_z as f64 * CHUNK_SIZE as f64 + z as f64 + 0.5;
-    let params = sample_params(noises, world_x, world_z, erosion_map);
+    let params = sample_params(noises, world_x, world_z);
     let surface_block = biome::surface_block(params.biome);
     let subsurface_block = biome::subsurface_block(params.biome);
 
@@ -287,52 +281,6 @@ fn find_blocktype(world_x: f64, world_y: f64, world_z: f64, height: usize, surfa
     block
 }
 
-/// Generate a 64³ LOD super-chunk by sampling terrain noise at `voxel_size` spacing.
-pub fn generate_lod_super_chunk(origin: [i32; 3], voxel_size: u32, seed: u32, erosion_map: Option<&super::erosion::ErosionMap>) -> LodVoxelGrid {
-    let noises = WorldNoises::new(seed);
-    let voxel_size = voxel_size as f64;
-    let grid_size = CHUNK_SIZE * 4;
-    let mut blocks = vec![BlockType::Air; grid_size * grid_size * grid_size];
-
-    for grid_z in 0..grid_size {
-        for grid_x in 0..grid_size {
-            let world_x = origin[0] as f64 + grid_x as f64 * voxel_size;
-            let world_z = origin[2] as f64 + grid_z as f64 * voxel_size;
-            let params = sample_params(&noises, world_x, world_z, erosion_map);
-            let surface = biome::surface_block(params.biome);
-            let subsurface = biome::subsurface_block(params.biome);
-
-            for grid_y in 0..grid_size {
-                let world_y = origin[1] as f64 + grid_y as f64 * voxel_size;
-                let y_top = (world_y + voxel_size - 1.0) as usize;
-                let block = sample_block(y_top, params.surface_height, surface, subsurface, &noises, world_x, world_y + voxel_size * 0.5, world_z);
-                blocks[grid_x + grid_z * grid_size + grid_y * grid_size * grid_size] = block;
-            }
-        }
-    }
-
-    const SURFACE_DEPTH: usize = 2;
-    for grid_z in 0..grid_size {
-        for grid_x in 0..grid_size {
-            let column = grid_x + grid_z * grid_size;
-            let mut top = 0;
-            for grid_y in (0..grid_size).rev() {
-                if blocks[column + grid_y * grid_size * grid_size] != BlockType::Air {
-                    top = grid_y;
-                    break;
-                }
-            }
-            if top >= SURFACE_DEPTH {
-                for grid_y in 0..top - SURFACE_DEPTH {
-                    blocks[column + grid_y * grid_size * grid_size] = BlockType::Air;
-                }
-            }
-        }
-    }
-
-    LodVoxelGrid { blocks, size: grid_size }
-}
-
 fn sample_block(y: usize, height: usize, surface: BlockType, subsurface: BlockType, noises: &WorldNoises, wx: f64, wy: f64, wz: f64) -> BlockType {
     if y > height && y <= SEA_LEVEL {
         return BlockType::Water;
@@ -368,16 +316,4 @@ fn sample_block(y: usize, height: usize, surface: BlockType, subsurface: BlockTy
     }
 
     block
-}
-
-/// A flat 64³ voxel grid for LOD super-chunk generation.
-pub struct LodVoxelGrid {
-    blocks: Vec<BlockType>,
-    size: usize,
-}
-
-impl super::svdag::VoxelSource for LodVoxelGrid {
-    fn get(&self, x: usize, y: usize, z: usize) -> BlockType {
-        self.blocks[x + z * self.size + y * self.size * self.size]
-    }
 }

@@ -107,8 +107,8 @@ mod tests {
     fn local_offset_stays_within_chunk_bounds() {
         let chunk_size = CHUNK_SIZE as f32;
         let (_, local_x, local_y, local_z) = world_to_chunk_local(DVec3::new(100.0, 200.5, -37.0));
-        for local_coordinate in [local_x, local_y, local_z] {
-            assert!((0.0..chunk_size).contains(local_coordinate));
+        for local_coordinate in [local_x as f32, local_y as f32, local_z as f32] {
+            assert!((0.0..chunk_size).contains(&local_coordinate));
         }
     }
 

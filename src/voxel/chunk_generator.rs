@@ -1,9 +1,7 @@
 use super::chunk::Chunk;
-use super::erosion::ErosionMap;
 use super::terrain;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::thread;
 
 const WORKER_COUNT: usize = 4;
@@ -30,7 +28,7 @@ pub struct ChunkGenerator {
 }
 
 impl ChunkGenerator {
-    pub fn new(seed: u32, erosion_map: Option<Arc<ErosionMap>>) -> Self {
+    pub fn new(seed: u32) -> Self {
         let (request_sender, request_receiver) = crossbeam_channel::unbounded::<ColumnKey>();
         let (result_sender, result_receiver) = crossbeam_channel::unbounded::<GeneratedColumn>();
 
@@ -38,10 +36,9 @@ impl ChunkGenerator {
         for _ in 0..WORKER_COUNT {
             let request = request_receiver.clone();
             let result = result_sender.clone();
-            let e_map = erosion_map.clone();
             workers.push(thread::spawn(move || {
                 while let Ok(ColumnKey { chunk_x, chunk_z }) = request.recv() {
-                    let chunks = terrain::generate_column(chunk_x, chunk_z, seed, e_map.as_deref());
+                    let chunks = terrain::generate_column(chunk_x, chunk_z, seed);
                     if result.send(GeneratedColumn { chunk_x, chunk_z, chunks }).is_err() {
                         break;
                     }

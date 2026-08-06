@@ -2,13 +2,11 @@ use super::{
     block::BlockType,
     chunk::Chunk,
     chunk_generator::ChunkGenerator,
-    erosion::ErosionMap,
     grid::{world_to_chunk_local, ChunkPos},
     metric::MetricField,
 };
 use glam::DVec3;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 pub const TERRAIN_MIN_CY: i32 = 0;
 pub const TERRAIN_MAX_CY: i32 = 47;
@@ -25,10 +23,10 @@ pub struct ChunkChanges {
 }
 
 impl World {
-    pub fn new(seed: u32, erosion_map: Option<Arc<ErosionMap>>) -> Self {
+    pub fn new(seed: u32) -> Self {
         Self {
             chunks: HashMap::new(),
-            generator: ChunkGenerator::new(seed, erosion_map),
+            generator: ChunkGenerator::new(seed),
             metric: MetricField::new(),
         }
     }
@@ -208,7 +206,7 @@ mod tests {
 
     #[test]
     fn fully_loaded_column_is_not_rerequested() {
-        let mut world = World::new(0, None);
+        let mut world = World::new(0);
         for cy in TERRAIN_MIN_CY..=TERRAIN_MAX_CY {
             world.chunks.insert(ChunkPos { x: 0, y: cy, z: 0 }, Chunk::new(BlockType::Air));
         }
@@ -225,7 +223,7 @@ mod tests {
 
     #[test]
     fn previously_loaded_column_outside_render_distance_is_unloaded() {
-        let mut world = World::new(0, None);
+        let mut world = World::new(0);
         let column = ChunkPos { x: 0, y: 0, z: 0 };
         for cy in TERRAIN_MIN_CY..=TERRAIN_MAX_CY {
             world.chunks.insert(ChunkPos { x: 0, y: cy, z: 0 }, Chunk::new(BlockType::Air));

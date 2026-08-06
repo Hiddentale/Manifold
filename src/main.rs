@@ -3,18 +3,14 @@ mod game_state;
 mod graphical_core;
 mod storage;
 mod voxel;
-mod vr;
 use anyhow::Result;
 use game_state::GameState;
 use graphical_core::camera::{Camera, EyeMatrices};
 use graphical_core::input::InputState;
 use graphical_core::ui_pipeline::UiPipeline;
 use graphical_core::vulkan_object::VulkanApplication;
-use log::info;
 use std::time::Instant;
 use voxel::player::Player;
-use voxel::raycast;
-use vr::{VrContext, VrSupport};
 use vulkan_rust::{vk, Version};
 use winit::{
     dpi::LogicalSize,
@@ -44,7 +40,6 @@ const DIM_TEXT: [f32; 4] = [0.7, 0.7, 0.7, 1.0];
 
 fn main() -> Result<()> {
     initialize_error_handler();
-    let vr_context = probe_vr();
 
     let event_handler = EventLoop::new()?;
     let user_window = WindowBuilder::new()
@@ -52,15 +47,12 @@ fn main() -> Result<()> {
         .with_inner_size(LogicalSize::new(1024, 768))
         .build(&event_handler)?;
 
-    let mut application = unsafe { VulkanApplication::create_vulkan_application(&user_window, vr_context) }?;
+    let mut application = unsafe { VulkanApplication::create_vulkan_application(&user_window, None) }?;
     let mut destroy_application = false;
     let mut minimized = false;
     let mut camera = Camera::default();
     let mut input = InputState::new();
     let mut player = Player::new();
-    // Phase D': fixed-step physics at 60 Hz, decoupled from rendering.
-    // Mouse look stays per-frame (smoothness), movement + gravity tick at
-    // a constant rate so collision is deterministic regardless of FPS.
     const PHYSICS_TICK: f32 = 1.0 / 60.0;
     const MAX_PHYSICS_CATCHUP: f32 = 0.25;
     let mut physics_accumulator: f32 = 0.0;
@@ -140,22 +132,15 @@ fn main() -> Result<()> {
                                     match storage::world_meta::create_world(name, seed) {
                                         Ok(dir) => {
                                             // Pregen is "ready to play" when the player's working
-                                            // set is filled — not when the entire planet is in RAM.
-                                            // Working set = (2·WORLD_DISTANCE+1)² columns on the
-                                            // player's spawn face. The heightmap LOD covers everything
-                                            // outside this neighborhood from the moment world entry.
+                                            // set of columns is loaded.
                                             let stream_rd = graphical_core::vulkan_object::WORLD_DISTANCE;
                                             let side = (2 * stream_rd + 1) as usize;
                                             let total = side * side;
-                                            let erosion_path = dir.join("erosion_map.bin");
-                                            let ew = voxel::erosion_worker::ErosionWorker::start(seed, erosion_path);
                                             game_state = GameState::PreGenerating {
                                                 world_dir: dir,
                                                 seed,
                                                 loaded: 0,
                                                 total,
-                                                erosion_worker: Some(ew),
-                                                erosion_map: None,
                                             };
                                         }
                                         Err(e) => eprintln!("Failed to create world: {e}"),
@@ -274,10 +259,7 @@ fn main() -> Result<()> {
                     }
                     GameState::EnteringWorld { .. } => {
                         if let GameState::EnteringWorld { world_dir, seed } = std::mem::replace(&mut game_state, GameState::Playing) {
-                            let erosion_map = voxel::erosion::ErosionMap::load(&world_dir.join("erosion_map.bin"))
-                                .ok()
-                                .map(std::sync::Arc::new);
-                            if let Err(e) = unsafe { application.enter_world(&world_dir, seed, erosion_map) } {
+                            if let Err(e) = unsafe { application.enter_world(&world_dir, seed) } {
                                 eprintln!("Failed to enter world: {e}");
                                 game_state = GameState::TitleScreen;
                             } else {
@@ -298,18 +280,6 @@ fn main() -> Result<()> {
                 if destroy_application || minimized {
                     return;
                 }
-                if application.has_vr() {
-                    if let Err(e) = application.poll_vr_events() {
-                        eprintln!("VR event error: {e}");
-                    }
-                }
-                let vr_eyes = if application.has_vr() {
-                    unsafe { application.render_vr_frame() }.unwrap_or(None)
-                } else {
-                    None
-                };
-                let eyes = vr_eyes.unwrap_or_else(|| EyeMatrices::from_camera(&camera, application.swapchain_extent()));
-
                 let result = match &game_state {
                     GameState::Playing => {
                         application.ui.begin_frame();
@@ -433,14 +403,11 @@ fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, curso
                             let side = (2 * stream_rd + 1) as usize;
                             let total = side * side;
                             let erosion_path = dir.join("erosion_map.bin");
-                            let ew = voxel::erosion_worker::ErosionWorker::start(seed, erosion_path);
                             *state = GameState::PreGenerating {
                                 world_dir: dir,
                                 seed,
                                 loaded: 0,
                                 total,
-                                erosion_worker: Some(ew),
-                                erosion_map: None,
                             };
                         }
                         Err(e) => eprintln!("Failed to create world: {e}"),
@@ -500,8 +467,6 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
         seed,
         loaded,
         total,
-        erosion_worker,
-        erosion_map,
     } = state
     else {
         return;
@@ -572,23 +537,6 @@ fn exit_program(destroy_application: &mut bool, current_window: &EventLoopWindow
     *destroy_application = true;
     current_window.exit();
     unsafe { application.destroy_vulkan_application() }
-}
-
-fn probe_vr() -> Option<VrContext> {
-    match VrContext::probe() {
-        Ok(VrSupport::Available(ctx)) => {
-            info!("VR available — OpenXR session ready for creation");
-            Some(ctx)
-        }
-        Ok(VrSupport::Unavailable(reason)) => {
-            info!("VR unavailable: {reason} — running in desktop mode");
-            None
-        }
-        Err(e) => {
-            info!("VR probe failed: {e:#} — running in desktop mode");
-            None
-        }
-    }
 }
 
 fn initialize_error_handler() {
