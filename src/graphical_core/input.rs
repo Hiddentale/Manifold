@@ -86,7 +86,7 @@ impl InputState {
         let multiplier = if self.is_pressed(KeyCode::ShiftLeft) { SPRINT_MULTIPLIER } else { 1.0 };
         let speed = MOVE_SPEED * multiplier * delta_time;
         let front = player.forward;
-        let right = player.right();
+        let right = player.right_vector();
         // Camera-up: orthogonal to forward in the screen plane. Decouples
         // E/Q from the planet's radial direction so "fly up" always means
         // "up relative to where the camera is looking", not "away from the
@@ -124,8 +124,8 @@ impl InputState {
         let speed = MOVE_SPEED * delta_time;
         let up = player.up();
         let front = player.forward;
-        let forward = (front - up * front.dot(up)).normalize_or(player.right());
-        let right = forward.cross(up).normalize_or(player.right());
+        let forward = (front - up * front.dot(up)).normalize_or(player.right_vector());
+        let right = forward.cross(up).normalize_or(player.right_vector());
 
         let mut move_dir = glam::Vec3::ZERO;
         if self.is_pressed(KeyCode::KeyW) {

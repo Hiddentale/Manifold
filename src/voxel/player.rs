@@ -1,11 +1,16 @@
 //! Player state.
 
-use crate::voxel::world::World; 
+use crate::voxel::world::World;
 use glam::Vec3;
 
 const GRAVITY: f32 = 20.0;
 const JUMP_VELOCITY: Vec3 = Vec3::new(0.0, 8.0, 0.0);
 const CAMERA_FORWARD_OFFSET: f32 = 0.25;
+/// World-space up. Gravity always pulls along -Y in the flat world, so this
+/// is the single fixed reference for both physics and camera-relative math.
+const WORLD_UP: Vec3 = Vec3::new(0.0, 1.0, 0.0);
+/// Keeps pitch just short of ±90° so forward/right never go parallel to WORLD_UP.
+const PITCH_LIMIT: f32 = 1.5533; // ~89 degrees
 
 pub struct Player {
     pub x: f32,
@@ -18,25 +23,28 @@ pub struct Player {
     pub velocity: Vec3,
     pub on_ground: bool,
     pub fly_mode: bool,
+    yaw: f32,
+    pitch: f32,
 }
 
 impl Player {
     pub fn new() -> Self {
-        let forward = Vec3::new(1.0, 0.0, 0.0);
-        let right = Vec3::new(0.0, 0.0, -1.0);
-        let velocity = Vec3::new(0.0, 0.0, 0.0);
-        Self {
+        let mut player = Self {
             x: 0.0,
             y: 90.0,
             z: 0.0,
             height: 1.7,
             half_width: 0.3,
-            forward,
-            right,
-            velocity,
+            forward: Vec3::ZERO,
+            right: Vec3::ZERO,
+            velocity: Vec3::ZERO,
             on_ground: true,
             fly_mode: false,
-        }
+            yaw: 0.0,
+            pitch: 0.0,
+        };
+        player.update_look_vectors();
+        player
     }
 
     /// Cartesian body-center position.
@@ -48,55 +56,93 @@ impl Player {
     pub fn camera_position(&self) -> Vec3 {
         self.world_position() + self.forward * CAMERA_FORWARD_OFFSET
     }
-    
+
     pub fn right_vector(&self) -> Vec3 {
         self.right
     }
 
-    pub fn apply_physics(&mut self, dt: f32, player: &Player, world: &World) {
+    /// World-space up. Fixed, since gravity is always -Y in the flat world.
+    pub fn up(&self) -> Vec3 {
+        WORLD_UP
+    }
+
+    /// Turn left/right around world-up. `delta` in radians.
+    pub fn rotate_yaw(&mut self, delta: f32) {
+        self.yaw += delta;
+        self.update_look_vectors();
+    }
+
+    /// Look up/down, clamped to ±~89° so the camera can't flip over.
+    pub fn rotate_pitch(&mut self, delta: f32) {
+        self.pitch = (self.pitch + delta).clamp(-PITCH_LIMIT, PITCH_LIMIT);
+        self.update_look_vectors();
+    }
+
+    fn update_look_vectors(&mut self) {
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        self.forward = Vec3::new(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch).normalize();
+        self.right = self.forward.cross(WORLD_UP).normalize();
+    }
+
+    /// Direct, unchecked positional offset — fly mode has no collision.
+    pub fn fly_move(&mut self, delta: Vec3) {
+        self.x += delta.x;
+        self.y += delta.y;
+        self.z += delta.z;
+    }
+
+    pub fn apply_physics(&mut self, dt: f32, world: &World) {
         self.velocity.y -= GRAVITY * dt;
         // Might have issue here where if we jump and hit a ceiling, can_move will give us false?
-        if !self.can_move(0.0, self.velocity.y * dt, 0.0, player, world) {
+        if !self.can_move(0.0, self.velocity.y * dt, 0.0, world) {
             self.velocity.y = 0.0;
             self.on_ground = true;
         }
     }
 
-    pub fn can_move(&mut self, dx: f32, dy: f32, dz: f32, player: &Player, world: &World) -> bool {
-            let old_x = self.x;
-            let old_y = self.y;
-            let old_z = self.z;
-            
-            self.x += dx;
-            self.y += dy;
-            self.z += dz;
-            
-            if self.capsule_collides(player, world) {
-                self.x = old_x;
-                self.y = old_y;
-                self.z = old_z;
-                return false;
-            }
-            true
+    pub fn can_move(&mut self, dx: f32, dy: f32, dz: f32, world: &World) -> bool {
+        let old_x = self.x;
+        let old_y = self.y;
+        let old_z = self.z;
+
+        self.x += dx;
+        self.y += dy;
+        self.z += dz;
+
+        if self.capsule_collides(world) {
+            self.x = old_x;
+            self.y = old_y;
+            self.z = old_z;
+            return false;
+        }
+        true
     }
 
+    /// Walk-mode horizontal move with wall sliding: if the combined (x, z)
+    /// move is blocked, retry each axis independently so the player slides
+    /// along the wall instead of stopping dead.
     pub fn walk(&mut self, direction: Vec3, world: &World) {
-        todo!()
+        if self.can_move(direction.x, 0.0, direction.z, world) {
+            return;
+        }
+        self.can_move(direction.x, 0.0, 0.0, world);
+        self.can_move(0.0, 0.0, direction.z, world);
     }
 
     pub fn sweep_capsule(&self, delta: Vec3, world: &World) -> bool {
         todo!()
     }
 
-    pub fn capsule_collides(&self, player: &Player, world: &World) -> bool {
+    pub fn capsule_collides(&self, world: &World) -> bool {
         let angles = [0.0, std::f32::consts::PI / 2.0, std::f32::consts::PI, 3.0 * std::f32::consts::PI / 2.0];
-            
-        for y_offset in [0.0, 0.85, player.height] {
+
+        for y_offset in [0.0, 0.85, self.height] {
             for &angle in &angles {
-                let dx = (angle.cos() * player.half_width).round() as i32;
-                let dz = (angle.sin() * player.half_width).round() as i32;
-                    
-                if block_is_solid(player.x as i32 + dx, (player.y + y_offset) as i32, player.z as i32 + dz, world) {
+                let dx = (angle.cos() * self.half_width).round() as i32;
+                let dz = (angle.sin() * self.half_width).round() as i32;
+
+                if block_is_solid(self.x as i32 + dx, (self.y + y_offset) as i32, self.z as i32 + dz, world) {
                     return true;
                 }
             }
@@ -112,9 +158,9 @@ impl Player {
     }
 
     pub fn toggle_fly_mode(&mut self) {
-        todo!()
+        self.fly_mode = !self.fly_mode;
+        self.velocity = Vec3::ZERO;
     }
-
 }
 
 

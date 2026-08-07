@@ -24,10 +24,7 @@ const PORTABILITY_MACOS_VERSION: Version = Version::new(1, 3, 216);
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
 const VALIDATION_LAYER: &std::ffi::CStr = c"VK_LAYER_KHRONOS_validation";
-const DEVICE_EXTENSIONS: &[&std::ffi::CStr] = &[
-    vk::extension_names::KHR_SWAPCHAIN_EXTENSION_NAME,
-    vk::extension_names::EXT_MESH_SHADER_EXTENSION_NAME,
-];
+const DEVICE_EXTENSIONS: &[&std::ffi::CStr] = &[vk::extension_names::KHR_SWAPCHAIN_EXTENSION_NAME];
 
 const BUTTON_W: f32 = 300.0;
 const BUTTON_H: f32 = 40.0;
@@ -47,7 +44,7 @@ fn main() -> Result<()> {
         .with_inner_size(LogicalSize::new(1024, 768))
         .build(&event_handler)?;
 
-    let mut application = unsafe { VulkanApplication::create_vulkan_application(&user_window, None) }?;
+    let mut application = unsafe { VulkanApplication::create_vulkan_application(&user_window) }?;
     let mut destroy_application = false;
     let mut minimized = false;
     let mut camera = Camera::default();
@@ -226,32 +223,18 @@ fn main() -> Result<()> {
                         physics_accumulator = (physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
                         while physics_accumulator >= PHYSICS_TICK {
                             if let Some(world) = application.world() {
-                                let local_p = world.metric.sample(player.world_pos()).p;
+                                let local_p = world.metric.sample(player.world_position()).p;
                                 input.tick_movement(&mut player, world, PHYSICS_TICK, local_p);
                             }
                             physics_accumulator -= PHYSICS_TICK;
                         }
                         camera.sync_from_player(&player);
-                        let left = input.take_left_click();
-                        let right = input.take_right_click();
-                        if left || right {
-                            if let Some(world) = application.world() {
-                                if let Some(hit) = raycast::raycast(player.eye_pos(), player.forward, world) {
-                                    let target = if left { hit.hit } else { hit.adjacent };
-                                    let allowed = left || !player.overlaps_block(target.chunk, target.lx, target.ly, target.lz);
-                                    if allowed {
-                                        let new_block = if left {
-                                            voxel::block::BlockType::Air
-                                        } else {
-                                            voxel::block::BlockType::Stone
-                                        };
-                                        unsafe {
-                                            application.set_block_at(target.chunk, target.lx, target.ly, target.lz, new_block);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // Block break/place is disabled: it depended on the deleted
+                        // raycast module and VulkanApplication::set_block_at, both
+                        // removed with the sphere/VR/SVDAG cleanup. TODO: reimplement
+                        // against the flat-world World/ChunkPos API.
+                        input.take_left_click();
+                        input.take_right_click();
                     }
                     GameState::PreGenerating { .. } => {
                         unsafe { application.update_world(&camera).ok() };
@@ -280,14 +263,12 @@ fn main() -> Result<()> {
                 if destroy_application || minimized {
                     return;
                 }
+                let eyes = EyeMatrices::from_camera(&camera, application.swapchain_extent());
                 let result = match &game_state {
                     GameState::Playing => {
                         application.ui.begin_frame();
                         application.ui.draw_text(&fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
-                        let pos_text = format!(
-                            "face={:?} chunk=({},{},{}) local=({:.1},{:.1},{:.1})",
-                            player.face, player.cx, player.cy, player.cz, player.lx, player.ly, player.lz
-                        );
+                        let pos_text = format!("pos=({:.1},{:.1},{:.1})", player.x, player.y, player.z);
                         application.ui.draw_text(&pos_text, 4.0, 22.0, 14.0, [1.0, 1.0, 1.0, 0.8]);
                         unsafe { application.render_frame(&user_window, &camera, &eyes) }
                     }
@@ -402,7 +383,6 @@ fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, curso
                             let stream_rd = graphical_core::vulkan_object::WORLD_DISTANCE;
                             let side = (2 * stream_rd + 1) as usize;
                             let total = side * side;
-                            let erosion_path = dir.join("erosion_map.bin");
                             *state = GameState::PreGenerating {
                                 world_dir: dir,
                                 seed,
@@ -420,16 +400,8 @@ fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, curso
                 *state = GameState::TitleScreen;
             }
         }
-        GameState::PreGenerating {
-            loaded, total, erosion_map, ..
-        } => {
-            let title = if erosion_map.is_none() {
-                "Running hydraulic erosion..."
-            } else if *loaded >= *total {
-                "Building LOD terrain..."
-            } else {
-                "Generating terrain..."
-            };
+        GameState::PreGenerating { loaded, total, .. } => {
+            let title = if *loaded >= *total { "Finishing up..." } else { "Generating terrain..." };
             let tw = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
             ui.draw_text(title, (sw - tw) / 2.0, sh * 0.35, TEXT_SIZE * 1.5, TEXT_COLOR);
 
@@ -472,26 +444,10 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
         return;
     };
 
-    // Poll erosion worker
-    if erosion_map.is_none() {
-        if let Some(worker) = erosion_worker.as_ref() {
-            if let Some(map) = worker.try_receive() {
-                *erosion_map = Some(std::sync::Arc::new(map));
-                *erosion_worker = None; // Worker done, drop it
-            }
-        }
-    }
-
-    // Don't enter world until erosion map is ready
-    if erosion_map.is_none() {
-        return;
-    }
-
     if !application.has_world() {
         let dir = world_dir.clone();
         let s = *seed;
-        let emap = erosion_map.clone();
-        if let Err(e) = unsafe { application.enter_world(&dir, s, emap) } {
+        if let Err(e) = unsafe { application.enter_world(&dir, s) } {
             eprintln!("Failed to enter world: {e}");
             *state = GameState::TitleScreen;
             return;
@@ -500,7 +456,7 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
     let col_count = if let Some(world) = application.world() {
         let mut seen = std::collections::HashSet::new();
         for cp in world.chunk_positions() {
-            seen.insert((cp.face, cp.cx, cp.cz));
+            seen.insert((cp.x, cp.z));
         }
         seen.len()
     } else {

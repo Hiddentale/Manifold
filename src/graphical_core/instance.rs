@@ -9,7 +9,7 @@ use vulkan_rust::{required_extensions, vk, Device, Entry, Instance, Version};
 use winit::window::Window;
 
 /// Creates a Vulkan instance with validation layers and debug messaging if enabled.
-pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut VulkanApplicationData, vr: Option<&VrContext>) -> anyhow::Result<Instance> {
+pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut VulkanApplicationData) -> anyhow::Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
         .application_name(c"Vulkan Tutorial")
         .application_version(Version::new(1, 0, 0).to_raw())
@@ -45,12 +45,6 @@ pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut Vulkan
     };
     if VALIDATION_ENABLED {
         extensions.push(vk::extension_names::EXT_DEBUG_UTILS_EXTENSION_NAME.as_ptr());
-    }
-
-    let vr_instance_extensions = vr.map(|v| v.required_instance_extensions()).unwrap_or_default();
-    for ext in &vr_instance_extensions {
-        info!("VR requires instance extension: {}", ext.to_string_lossy());
-        extensions.push(ext.as_ptr());
     }
 
     let mut info = vk::InstanceCreateInfo::builder()
@@ -109,30 +103,19 @@ pub unsafe fn create_logical_device(
         extensions.push(vk::extension_names::KHR_PORTABILITY_SUBSET_EXTENSION_NAME.as_ptr());
     }
 
-    let vr_device_extensions = vr.map(|v| v.required_device_extensions()).unwrap_or_default();
-    for ext in &vr_device_extensions {
-        info!("VR requires device extension: {}", ext.to_string_lossy());
-        extensions.push(ext.as_ptr());
-    }
-
     let features = vk::PhysicalDeviceFeatures::builder().multi_draw_indirect(true);
     let mut features_1_1 = vk::PhysicalDeviceVulkan11Features::builder().multiview(true);
     let mut features_1_2 = vk::PhysicalDeviceVulkan12Features::builder();
     if !cfg!(target_os = "macos") {
         features_1_2 = features_1_2.draw_indirect_count(true);
     }
-    let mut mesh_shader_features = vk::PhysicalDeviceMeshShaderFeaturesEXT::builder()
-        .task_shader(true)
-        .mesh_shader(true)
-        .multiview_mesh_shader(true);
     let info = vk::DeviceCreateInfo::builder()
         .queue_create_infos(&queue_infos)
         .enabled_layer_names(&layers)
         .enabled_extension_names(&extensions)
         .enabled_features(&features)
         .push_next(&mut *features_1_1)
-        .push_next(&mut *features_1_2)
-        .push_next(&mut *mesh_shader_features);
+        .push_next(&mut *features_1_2);
     let device = instance.create_device(data.physical_device, &info, None)?;
 
     data.graphics_queue = device.get_device_queue(indices.graphics_queue_index, 0);

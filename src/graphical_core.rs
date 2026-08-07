@@ -5,24 +5,21 @@ pub mod compute_cull;
 pub mod cull_compact;
 pub mod depth;
 pub mod descriptors;
+pub mod face_gen_pipeline;
 pub mod frustum;
 pub mod gpu;
-pub mod heightmap_atlas;
-pub mod heightmap_tile_pipeline;
 pub mod input;
 pub mod instance;
 pub mod memory;
-pub mod mesh_pipeline;
 pub mod palette_buffer;
 pub mod pipeline;
 pub mod queue_families;
 pub mod render_pass;
 mod shaders;
-pub mod svdag_pipeline;
-pub mod svdag_pool;
 pub mod swapchain;
 pub mod texture_mapping;
 pub mod ui_pipeline;
+pub mod vertex_pull_pipeline;
 pub mod voxel_pool;
 pub mod vulkan_object;
 
@@ -45,7 +42,6 @@ fn subresource_range_mip(aspect: vulkan_rust::vk::ImageAspectFlags, base_mip: u3
         .layer_count(1)
 }
 
-/// Memory visible and coherent from the CPU — used for persistently mapped buffers.
 fn host_visible_coherent() -> vulkan_rust::vk::MemoryPropertyFlags {
     vulkan_rust::vk::MemoryPropertyFlags::HOST_VISIBLE | vulkan_rust::vk::MemoryPropertyFlags::HOST_COHERENT
 }

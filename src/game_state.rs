@@ -1,6 +1,5 @@
 use crate::storage::world_meta::WorldMeta;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 pub enum GameState {
     TitleScreen,

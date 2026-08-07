@@ -123,7 +123,7 @@ fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64) -> TerrainPar
     let weirdness = noises.weirdness.get(warped_coordinates);
     let temperature = noises.temperature.get(warped_coordinates);
     let humidity = noises.humidity.get(warped_coordinates);
-    let mut surface_height = compute_height_from_params(noises, warped_x, warped_z, continentalness, erosion, weirdness);
+    let surface_height = compute_height_from_params(noises, warped_x, warped_z, continentalness, erosion, weirdness);
 
     let biome = biome::determine_biome(continentalness, temperature, humidity, erosion, weirdness, surface_height, SEA_LEVEL);
 
