@@ -50,10 +50,15 @@ struct EventInfo {
     destroy_application: &mut bool,
 }
 
+fn initialize_event_info() {
+    todo!();
+}
+
 fn main() -> Result<()> {
     initialize_error_handler();
 
     let event_handler = EventLoop::new()?;
+    event_info: EventInfo = initialize_event_info();
     let user_window = WindowBuilder::new()
         .with_title("Manifold")
         .with_inner_size(LogicalSize::new(1024, 768))
@@ -138,12 +143,12 @@ fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo) {
     }
 }
 
-fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) {
+fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> std::result::Result<(), anyhow::error>{
     event_info.application.ui.begin_frame();
     event_info.application.ui.draw_text(&fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
     let pos_text = format!("pos=({:.1},{:.1s},{:.1})", event_info.player.x, event_info.player.y, event_info.player.z);
     event_info.application.ui.draw_text(&pos_text, 4.0, 22.0, 14.0, [1.0, 1.0, 1.0, 0.8]);
-    unsafe { application.render_frame(&event_info.user_window, &event_info.camera, &eyes) }
+    unsafe { event_info.application.render_frame(&event_info.user_window, &event_info.camera, &eyes) }
 }
 
 fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
@@ -157,12 +162,11 @@ fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
     }
 }
 
-def handle_keyboard_input() {
+fn handle_keyboard_input() {
     todo!();
 }
 
-def temp() {
-    
+fn temp() {
     event_handler
         .run(move |event, current_window| match event {
             Event::WindowEvent {
@@ -308,7 +312,6 @@ def temp() {
             _ => (),
         })
         .expect("Main function crashed!");
-    Ok(())
 }
 
 fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, cursor: [f32; 2], clicked: bool) {
