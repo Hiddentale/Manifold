@@ -7,7 +7,6 @@ use crate::graphical_core::{
     frustum::Frustum,
     gpu::choose_gpu,
     instance::{create_instance, create_logical_device},
-    palette_buffer::{create_palette_buffer, destroy_palette_buffer},
     pipeline::create_sky_pipeline,
     render_pass::create_render_pass,
     swapchain::{create_swapchain, create_swapchain_image_views},
@@ -306,7 +305,6 @@ unsafe fn create_presentation_pipeline(
 unsafe fn create_resources(device: &Device, instance: &Instance, data: &mut VulkanApplicationData) -> anyhow::Result<()> {
     create_command_pool(instance, device, data)?;
     create_uniform_buffer(device, instance, data)?;
-    create_palette_buffer(device, instance, data)?;
     let (texture_image, texture_memory, texture_image_view, texture_sampler) = create_texture_image(device, instance, data)?;
     descriptors::create_pool(device, data)?;
     let descriptor_sets = descriptors::allocate_set(device, data.descriptor_pool, data.descriptor_set_layout)?;
@@ -320,7 +318,6 @@ unsafe fn create_resources(device: &Device, instance: &Instance, data: &mut Vulk
         texture_image_view,
         texture_sampler,
         data.uniform_buffer,
-        data.palette_buffer,
     );
 
     data.texture_image = texture_image;
@@ -770,7 +767,6 @@ impl VulkanApplication {
         }
         compute_cull::destroy_depth_pyramid_pipeline(&self.device, &self.depth_pyramid_pipeline);
         destroy_textures(&self.device, &mut self.vulkan_application_data);
-        destroy_palette_buffer(&self.device, &mut self.vulkan_application_data);
         destroy_uniform_buffer(&self.device, &mut self.vulkan_application_data);
         self.device.destroy_descriptor_pool(self.vulkan_application_data.descriptor_pool, None);
         self.device

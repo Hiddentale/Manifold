@@ -3,7 +3,6 @@ pub mod block;
 pub mod chunk;
 pub mod chunk_generator;
 pub mod grid;
-pub mod material;
 pub mod metric;
 pub mod player;
 pub mod terrain;

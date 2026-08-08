@@ -3,7 +3,6 @@ use crate::graphical_core::camera::UniformBufferObject;
 use crate::graphical_core::shaders::create_shader_module;
 use crate::graphical_core::voxel_pool::VoxelPool;
 use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::voxel::material::MaterialPalette;
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
@@ -68,21 +67,15 @@ unsafe fn create_descriptor_layout(device: &Device) -> anyhow::Result<vk::Descri
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
-        // Binding 2: MaterialPalette (FRAGMENT) — matches shader.frag, unchanged.
+        // Binding 2: FacesBuffer (VERTEX, read-only) — per-phase.
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(2)
             .descriptor_count(1)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-        // Binding 3: FacesBuffer (VERTEX, read-only) — per-phase.
-        *vk::DescriptorSetLayoutBinding::builder()
-            .binding(3)
-            .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX),
-        // Binding 4: ChunkInfoBuffer (VERTEX, read-only)
+        // Binding 3: ChunkInfoBuffer (VERTEX, read-only)
         *vk::DescriptorSetLayoutBinding::builder()
-            .binding(4)
+            .binding(3)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX),
@@ -97,7 +90,7 @@ unsafe fn create_descriptor_pool(device: &Device) -> anyhow::Result<vk::Descript
             .descriptor_count(2) // texture, x2 sets
             .r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
         *vk::DescriptorPoolSize::builder()
-            .descriptor_count(4) // CameraUBO + MaterialPalette, x2 sets
+            .descriptor_count(2) // CameraUBO, x2 sets
             .r#type(vk::DescriptorType::UNIFORM_BUFFER),
         *vk::DescriptorPoolSize::builder()
             .descriptor_count(4) // faces + chunk_info, x2 sets
@@ -129,10 +122,6 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data:
             .buffer(data.uniform_buffer)
             .range(std::mem::size_of::<UniformBufferObject>() as u64)];
 
-        let palette_info = [*vk::DescriptorBufferInfo::builder()
-            .buffer(data.palette_buffer)
-            .range(std::mem::size_of::<MaterialPalette>() as u64)];
-
         let faces_info = [*vk::DescriptorBufferInfo::builder()
             .buffer(pool.faces_buffer[phase])
             .range(vk::WHOLE_SIZE)];
@@ -153,16 +142,11 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data:
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(2)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&palette_info),
-            *vk::WriteDescriptorSet::builder()
-                .dst_set(set)
-                .dst_binding(3)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .buffer_info(&faces_info),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
-                .dst_binding(4)
+                .dst_binding(3)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .buffer_info(&chunk_info),
         ];

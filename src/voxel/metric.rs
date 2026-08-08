@@ -1,17 +1,14 @@
-#![allow(dead_code)] // Wired up incrementally over next commits
 use glam::Vec3;
 
 /// Local metric parameters at a world position.
 #[derive(Copy, Clone, Debug)]
 pub struct MetricParams {
-    /// Minkowski exponent: 1.0 = Manhattan, 2.0 = Euclidean, 50+ ≈ Chebyshev.
-    pub p: f32,
-    /// How warped space is here (0.0 = normal, 1.0 = fully warped). Drives VFX intensity.
-    pub blend: f32,
+    pub minkowski_exponent: f32,
+    pub warpedness: f32,
 }
 
 impl MetricParams {
-    pub const EUCLIDEAN: Self = Self { p: 2.0, blend: 0.0 };
+    pub const EUCLIDEAN: Self = Self { minkowski_exponent: 2.0, warpedness: 0.0 };
 }
 
 /// A localized region where the metric deviates from Euclidean.
@@ -20,8 +17,7 @@ pub struct Anomaly {
     pub center: Vec3,
     pub inner_radius: f32,
     pub outer_radius: f32,
-    /// Target Minkowski p-value at the center (1.0 = Manhattan, 50.0 = Chebyshev).
-    pub target_p: f32,
+    pub target_minkowski_exponent: f32,
     pub active: bool,
 }
 
@@ -36,7 +32,7 @@ impl MetricField {
         Self { anomalies: Vec::new() }
     }
 
-    pub fn add(&mut self, anomaly: Anomaly) {
+    pub fn add_anomaly(&mut self, anomaly: Anomaly) {
         self.anomalies.push(anomaly);
     }
 
@@ -44,32 +40,30 @@ impl MetricField {
         &self.anomalies
     }
 
-    /// Sample the metric at a world position. Loops over active anomalies,
-    /// blends their influence with weighted average in reciprocal p-space.
-    pub fn sample(&self, pos: Vec3) -> MetricParams {
-        let mut inv_p_sum = 0.0_f32; // accumulated weighted 1/p
+    pub fn sample_metric_at_pos(&self, pos: Vec3) -> MetricParams {
+        let mut inv_minkowski_exponent_sum = 0.0_f32;
         let mut weight_sum = 0.0_f32;
-        let mut max_blend = 0.0_f32;
+        let mut max_warpedness = 0.0_f32;
 
         for anomaly in &self.anomalies {
             if !anomaly.active {
                 continue;
             }
-            let dist = (pos - anomaly.center).length();
-            if dist >= anomaly.outer_radius {
+            let distance_to_anomaly = (pos - anomaly.center).length();
+            if distance_to_anomaly >= anomaly.outer_radius {
                 continue;
             }
 
-            let t = if dist <= anomaly.inner_radius {
+            let t = if distance_to_anomaly <= anomaly.inner_radius {
                 1.0
             } else {
-                let raw = 1.0 - (dist - anomaly.inner_radius) / (anomaly.outer_radius - anomaly.inner_radius);
+                let raw = 1.0 - (distance_to_anomaly - anomaly.inner_radius) / (anomaly.outer_radius - anomaly.inner_radius);
                 raw * raw * (3.0 - 2.0 * raw) // smoothstep
             };
 
-            inv_p_sum += t * inv_p(anomaly.target_p);
+            inv_minkowski_exponent_sum += t * inv_p(anomaly.target_minkowski_exponent);
             weight_sum += t;
-            max_blend = max_blend.max(t);
+            max_warpedness = max_warpedness.max(t);
         }
 
         if weight_sum < 1e-6 {
@@ -78,13 +72,13 @@ impl MetricField {
 
         // Weighted average of anomaly contributions + Euclidean baseline
         let euclidean_weight = (1.0 - weight_sum).max(0.0);
-        let total_inv_p = inv_p_sum + euclidean_weight * inv_p(2.0);
+        let total_inv_p = inv_minkowski_exponent_sum + euclidean_weight * inv_p(2.0);
         let total_weight = weight_sum + euclidean_weight;
-        let result_p = from_inv_p(total_inv_p / total_weight);
+        let result_minkowski_exponent = from_inv_p(total_inv_p / total_weight);
 
         MetricParams {
-            p: result_p,
-            blend: max_blend,
+            minkowski_exponent: result_minkowski_exponent,
+            warpedness: max_warpedness,
         }
     }
 }
@@ -233,110 +227,109 @@ mod tests {
     #[test]
     fn empty_field_returns_euclidean() {
         let field = MetricField::new();
-        let params = field.sample(Vec3::ZERO);
-        assert!(approx(params.p, 2.0));
-        assert!(approx(params.blend, 0.0));
+        let params = field.sample_metric_at_pos(Vec3::ZERO);
+        assert!(approx(params.minkowski_exponent, 2.0));
+        assert!(approx(params.warpedness, 0.0));
     }
 
     #[test]
     fn at_anomaly_center_returns_target_p() {
         let mut field = MetricField::new();
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::ZERO,
             inner_radius: 10.0,
             outer_radius: 50.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: true,
         });
-        let params = field.sample(Vec3::ZERO);
-        assert!(approx(params.p, 1.0), "expected p=1.0, got {}", params.p);
-        assert!(approx(params.blend, 1.0));
+        let params = field.sample_metric_at_pos(Vec3::ZERO);
+        assert!(approx(params.minkowski_exponent, 1.0), "expected p=1.0, got {}", params.minkowski_exponent);
+        assert!(approx(params.warpedness, 1.0));
     }
 
     #[test]
     fn outside_anomaly_returns_euclidean() {
         let mut field = MetricField::new();
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::ZERO,
             inner_radius: 10.0,
             outer_radius: 50.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: true,
         });
-        let params = field.sample(Vec3::new(100.0, 0.0, 0.0));
-        assert!(approx(params.p, 2.0));
-        assert!(approx(params.blend, 0.0));
+        let params = field.sample_metric_at_pos(Vec3::new(100.0, 0.0, 0.0));
+        assert!(approx(params.minkowski_exponent, 2.0));
+        assert!(approx(params.warpedness, 0.0));
     }
 
     #[test]
     fn gradient_zone_is_between_target_and_euclidean() {
         let mut field = MetricField::new();
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::ZERO,
             inner_radius: 10.0,
             outer_radius: 50.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: true,
         });
-        let params = field.sample(Vec3::new(30.0, 0.0, 0.0));
-        assert!(params.p > 1.0 && params.p < 2.0, "gradient p={} not between 1 and 2", params.p);
-        assert!(params.blend > 0.0 && params.blend < 1.0);
+        let params = field.sample_metric_at_pos(Vec3::new(30.0, 0.0, 0.0));
+        assert!(params.minkowski_exponent > 1.0 && params.minkowski_exponent < 2.0, "gradient p={} not between 1 and 2", params.minkowski_exponent);
+        assert!(params.warpedness > 0.0 && params.warpedness < 1.0);
     }
 
     #[test]
     fn inactive_anomaly_is_ignored() {
         let mut field = MetricField::new();
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::ZERO,
             inner_radius: 10.0,
             outer_radius: 50.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: false,
         });
-        let params = field.sample(Vec3::ZERO);
-        assert!(approx(params.p, 2.0));
+        let params = field.sample_metric_at_pos(Vec3::ZERO);
+        assert!(approx(params.minkowski_exponent, 2.0));
     }
 
     #[test]
     fn two_overlapping_anomalies_blend() {
         let mut field = MetricField::new();
         // Manhattan anomaly at origin
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::new(-20.0, 0.0, 0.0),
             inner_radius: 10.0,
             outer_radius: 40.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: true,
         });
         // Chebyshev anomaly nearby
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::new(20.0, 0.0, 0.0),
             inner_radius: 10.0,
             outer_radius: 40.0,
-            target_p: 50.0,
+            target_minkowski_exponent: 50.0,
             active: true,
         });
-        // Midpoint between them — should get an emergent intermediate metric
-        let params = field.sample(Vec3::ZERO);
-        assert!(params.p > 1.0 && params.p < 50.0, "overlap p={} not intermediate", params.p);
+        let params = field.sample_metric_at_pos(Vec3::ZERO);
+        assert!(params.minkowski_exponent > 1.0 && params.minkowski_exponent < 50.0, "overlap p={} not intermediate", params.minkowski_exponent);
     }
 
     #[test]
     fn p_decreases_monotonically_toward_manhattan_center() {
         let mut field = MetricField::new();
-        field.add(Anomaly {
+        field.add_anomaly(Anomaly {
             center: Vec3::ZERO,
             inner_radius: 10.0,
             outer_radius: 50.0,
-            target_p: 1.0,
+            target_minkowski_exponent: 1.0,
             active: true,
         });
-        let mut prev_p = 2.0;
+        let mut prev_minkowski_exponent = 2.0;
         for i in 1..=10 {
             let dist = 50.0 - (i as f32 * 4.0); // walk from outer edge inward
-            let params = field.sample(Vec3::new(dist, 0.0, 0.0));
-            assert!(params.p <= prev_p + EPSILON, "p increased at dist={dist}: {} > {prev_p}", params.p);
-            prev_p = params.p;
+            let params = field.sample_metric_at_pos(Vec3::new(dist, 0.0, 0.0));
+            assert!(params.minkowski_exponent <= prev_minkowski_exponent + EPSILON, "p increased at dist={dist}: {} > {prev_minkowski_exponent}", params.minkowski_exponent);
+            prev_minkowski_exponent = params.minkowski_exponent;
         }
     }
 
