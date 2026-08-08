@@ -38,54 +38,60 @@ const TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const DIM_TEXT: [f32; 4] = [0.7, 0.7, 0.7, 1.0];
 
 struct EventInfo {
-    game_state: &mut GameState,
-    input: &mut InputState,
-    player: &mut Player,
-    application: &mut VulkanApplication,
-    current_window: &EventLoopWindowTarget<>,
+    game_state: GameState,
+    input: InputState,
+    player: Player,
+    application: VulkanApplication,
     user_window: Window,
-    cursor_position: &mut [f32; 2],
-    minimized: &mut bool,
-    menu_click: &mut bool,
-    destroy_application: &mut bool,
+    cursor_position: [f32; 2],
+    minimized: bool,
+    menu_click: bool,
+    destroy_application: bool,
 }
 
-fn initialize_event_info() {
-    todo!();
-}
+fn initialize_event_info(&event_handler) -> anyhow::Result<EventInfo> {
 
-fn main() -> Result<()> {
-    initialize_error_handler();
-
-    let event_handler = EventLoop::new()?;
-    event_info: EventInfo = initialize_event_info();
     let user_window = WindowBuilder::new()
         .with_title("Manifold")
         .with_inner_size(LogicalSize::new(1024, 768))
         .build(&event_handler)?;
 
-    let mut application = unsafe { VulkanApplication::create_vulkan_application(&user_window) }?;
-    let mut destroy_application = false;
-    let mut minimized = false;
+    let application = unsafe { VulkanApplication::create_vulkan_application(&user_window) }?;
+    
+    let event_info= EventInfo {
+        game_state: GameState::TitleScreen,
+        input: InputState::new(),
+        player: Player::new(),
+        application,
+        user_window,
+        cursor_position: [0.0; 2],
+        minimized: false,
+        menu_click: false,
+        destroy_application: false
+    };
+    Ok(event_info)
+}
+
+fn main() -> Result<()> {
+        
+    initialize_error_handler();
+    let event_handler = EventLoop::new()?;
+    let mut event_info = initialize_event_info(&event_handler)?;
+
     let mut camera = Camera::default();
-    let mut input = InputState::new();
-    let mut player = Player::new();
     const PHYSICS_TICK: f32 = 1.0 / 60.0;
     const MAX_PHYSICS_CATCHUP: f32 = 0.25;
     let mut physics_accumulator: f32 = 0.0;
     let mut last_frame = Instant::now();
     let mut fps_counter = FpsCounter::new();
-    let mut game_state = GameState::TitleScreen;
-    let mut cursor_pos: [f32; 2] = [0.0; 2];
-    let mut menu_click = false;
 
-    release_cursor(&user_window);
+    release_cursor(&event_info.user_window);
 
     event_handler
         .run(move |event, current_window| match event {
             
-        Event::WindowEvent { event, .. } => { handle_window_event(event, event_info); }
-        Event::DeviceEvent { event, .. } => { handle_device_event(event, event_info); }
+        Event::WindowEvent { event, .. } => { handle_window_event(event, &mut event_info); }
+        Event::DeviceEvent { event, .. } => { handle_device_event(event, &mut event_info); }
         Event::AboutToWait => {}
         _ => (),
         
@@ -143,7 +149,7 @@ fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo) {
     }
 }
 
-fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> std::result::Result<(), anyhow::error>{
+fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> anyhow::Result<>{
     event_info.application.ui.begin_frame();
     event_info.application.ui.draw_text(&fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
     let pos_text = format!("pos=({:.1},{:.1s},{:.1})", event_info.player.x, event_info.player.y, event_info.player.z);
