@@ -329,12 +329,12 @@ impl VoxelPool {
     unsafe fn write_boundary(&self, slot: u32, pos: ChunkPos, world: &World) {
         let base = slot as usize * BOUNDARY_CHUNK_BYTES;
 
-        self.write_boundary_face(base, 0, world.get_chunk_at(pos.offset(1, 0, 0)), |c, u, v| c.get(0, v, u));
-        self.write_boundary_face(base, 1, world.get_chunk_at(pos.offset(-1, 0, 0)), |c, u, v| c.get(CHUNK_SIZE - 1, v, u));
-        self.write_boundary_face(base, 2, world.get_chunk_at(pos.offset(0, 1, 0)), |c, u, v| c.get(u, 0, v));
-        self.write_boundary_face(base, 3, world.get_chunk_at(pos.offset(0, -1, 0)), |c, u, v| c.get(u, CHUNK_SIZE - 1, v));
-        self.write_boundary_face(base, 4, world.get_chunk_at(pos.offset(0, 0, 1)), |c, u, v| c.get(u, v, 0));
-        self.write_boundary_face(base, 5, world.get_chunk_at(pos.offset(0, 0, -1)), |c, u, v| c.get(u, v, CHUNK_SIZE - 1));
+        self.write_boundary_face(base, 0, world.get_chunk_at(pos.offset(1, 0, 0)), |c, u, v| c.get_block_at(0, v, u));
+        self.write_boundary_face(base, 1, world.get_chunk_at(pos.offset(-1, 0, 0)), |c, u, v| c.get_block_at(CHUNK_SIZE - 1, v, u));
+        self.write_boundary_face(base, 2, world.get_chunk_at(pos.offset(0, 1, 0)), |c, u, v| c.get_block_at(u, 0, v));
+        self.write_boundary_face(base, 3, world.get_chunk_at(pos.offset(0, -1, 0)), |c, u, v| c.get_block_at(u, CHUNK_SIZE - 1, v));
+        self.write_boundary_face(base, 4, world.get_chunk_at(pos.offset(0, 0, 1)), |c, u, v| c.get_block_at(u, v, 0));
+        self.write_boundary_face(base, 5, world.get_chunk_at(pos.offset(0, 0, -1)), |c, u, v| c.get_block_at(u, v, CHUNK_SIZE - 1));
     }
 
     unsafe fn write_boundary_face(

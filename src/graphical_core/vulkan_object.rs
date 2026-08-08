@@ -124,7 +124,7 @@ pub const TIMING_QUERY_COUNT: u32 = 7;
 fn neighbors_all_opaque(world: &World, cp: ChunkPos) -> bool {
     let neighbor_solid = |nb: ChunkPos| -> bool {
         match world.get_chunk_at(nb) {
-            Some(c) => c.is_uniform_opaque(),
+            Some(chunk) => chunk.contains_no_air(),
             None => {
                 // Missing chunk → solid only if it's inside the radial terrain
                 // band. Above the band is sky.
@@ -577,10 +577,10 @@ impl VulkanApplication {
                 continue;
             }
             if let Some(chunk) = wr.world.get_chunk_at(*pos) {
-                if chunk.is_uniform_air() {
+                if chunk.contains_only_air() {
                     continue;
                 }
-                if chunk.is_uniform_opaque() {
+                if chunk.contains_no_air() {
                     newly_opaque.push(*pos);
                     if neighbors_all_opaque(&wr.world, *pos) {
                         continue;
@@ -605,13 +605,13 @@ impl VulkanApplication {
                 cp.offset(0, 0, 1),
                 cp.offset(0, 0, -1),
             ];
-            for n in neighbors {
-                if !wr.voxel_pool.has_chunk(&n) {
+            for neighbor in neighbors {
+                if !wr.voxel_pool.has_chunk(&neighbor) {
                     continue;
                 }
-                let Some(nc) = wr.world.get_chunk_at(n) else { continue };
-                if nc.is_uniform_opaque() && neighbors_all_opaque(&wr.world, n) {
-                    to_evict.insert(n);
+                let Some(neighbor_chunk) = wr.world.get_chunk_at(neighbor) else { continue };
+                if neighbor_chunk.contains_no_air() && neighbors_all_opaque(&wr.world, neighbor) {
+                    to_evict.insert(neighbor);
                 }
             }
         }

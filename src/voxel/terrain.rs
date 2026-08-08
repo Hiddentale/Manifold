@@ -244,7 +244,7 @@ fn fill_density_column(
             let world_y = (chunk_y * CHUNK_SIZE + local_y) as f64;
             let block = find_blocktype(world_x, world_y, world_z, params.surface_height, surface_block, subsurface_block, noises, );
             if block != BlockType::Air {
-                chunk.set(x, local_y, z, block);
+                chunk.set_block_at(x, local_y, z, block);
             }
         }
     }

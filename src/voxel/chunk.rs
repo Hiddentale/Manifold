@@ -15,44 +15,32 @@ impl Chunk {
         }
     }
 
-    pub fn get(&self, x: usize, y: usize, z: usize) -> BlockType {
-        self.blocks[index(x, y, z)]
+    pub fn get_block_at(&self, x: usize, y: usize, z: usize) -> BlockType {
+        self.blocks[coords_to_index(x, y, z)]
     }
 
-    pub fn set(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
-        self.blocks[index(x, y, z)] = block;
+    pub fn set_block_at(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
+        self.blocks[coords_to_index(x, y, z)] = block;
     }
 
-    /// Raw block data as bytes for GPU upload. Safe because BlockType is #[repr(u8)].
-    #[allow(dead_code)] // Used in Phase 1 (voxel pool upload)
+    /// Raw block data as bytes for GPU upload.
     pub fn as_bytes(&self) -> &[u8; CHUNK_VOLUME] {
-        // Safety: BlockType is #[repr(u8)] so [BlockType; N] has the same layout as [u8; N]
         unsafe { &*(self.blocks.as_ptr() as *const [u8; CHUNK_VOLUME]) }
     }
 
-    /// True iff every block in this chunk is `BlockType::Air`. Used by the
-    /// upload pipeline to skip chunks that emit zero geometry.
-    pub fn is_uniform_air(&self) -> bool {
-        let bytes = self.as_bytes();
-        let first = bytes[0];
-        first == BlockType::Air as u8 && bytes.iter().all(|&b| b == first)
+    /// True if every block in this chunk is `BlockType::Air`.
+    pub fn contains_only_air(&self) -> bool {
+        let blocks = self.as_bytes();
+        blocks.iter().all(|&blocktype| blocktype == BlockType::Air as u8)
     }
 
-    /// True iff every block in this chunk is the same opaque type — i.e. the
-    /// chunk is one solid material with no internal air. Combined with a
-    /// neighbor check this identifies "buried" chunks that emit no geometry.
-    pub fn is_uniform_opaque(&self) -> bool {
-        let bytes = self.as_bytes();
-        let first = bytes[0];
-        // SAFETY: BlockType is #[repr(u8)] with discriminants 0..=7
-        let kind: BlockType = unsafe { std::mem::transmute(first) };
-        kind.is_opaque() && bytes.iter().all(|&b| b == first)
+    /// True if every block in this chunk is the same opaque type
+    pub fn contains_no_air(&self) -> bool {
+        let blocks = self.as_bytes();
+        blocks.iter().all(|&blocktype| blocktype != BlockType::Air as u8)
     }
 }
 
-/// Converts (x, y, z) to a flat index. Y is the vertical axis (outermost).
-/// Layout: x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE
-fn index(x: usize, y: usize, z: usize) -> usize {
-    debug_assert!(x < CHUNK_SIZE && y < CHUNK_SIZE && z < CHUNK_SIZE);
+fn coords_to_index(x: usize, y: usize, z: usize) -> usize {
     x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE
 }

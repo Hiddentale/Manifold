@@ -83,7 +83,7 @@ impl World {
         let (chunk_pos, local_x, local_y, local_z) = 
             convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get(&chunk_pos) {
-            Some(chunk) => chunk.get(local_x, local_y, local_z).is_opaque(),
+            Some(chunk) => chunk.get_block_at(local_x, local_y, local_z).is_opaque(),
             None => false,
         }
     }
@@ -93,7 +93,7 @@ impl World {
         let (chunk_pos, local_x, local_y, local_z) = 
             convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get(&chunk_pos) {
-            Some(chunk) => chunk.get(local_x, local_y, local_z),
+            Some(chunk) => chunk.get_block_at(local_x, local_y, local_z),
             None => BlockType::Air,
         }
     }
@@ -104,7 +104,7 @@ impl World {
             convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get_mut(&chunk_pos) {
             Some(chunk) => { 
-                chunk.set(local_x, local_y, local_z, block);
+                chunk.set_block_at(local_x, local_y, local_z, block);
                 true
             }
             None => false,

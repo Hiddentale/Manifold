@@ -17,7 +17,7 @@ impl BlockType {
     }
 
     /// Bitmask where bit `i` is set if block type `i` is opaque.
-    /// Used by mesh shaders for GPU-side face culling.
+    /// Used by shaders for GPU-side face culling.
     pub fn opaque_mask() -> u32 {
         let mut mask = 0u32;
         for i in 0..=7u8 {
