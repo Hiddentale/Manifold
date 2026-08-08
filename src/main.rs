@@ -43,15 +43,17 @@ struct EventInfo {
     player: Player,
     camera: Camera,
     fps_counter: FpsCounter,
+    last_frame: Instant,
     application: VulkanApplication,
     user_window: Window,
     cursor_position: [f32; 2],
+    physics_accumulator: f32,
     minimized: bool,
     menu_click: bool,
     destroy_application: bool,
 }
 
-fn initialize_event_info(&event_handler) -> anyhow::Result<EventInfo> {
+fn initialize_event_info(event_handler: &EventLoopWindowTarget<()>) -> anyhow::Result<EventInfo> {
 
     let user_window = WindowBuilder::new()
         .with_title("Manifold")
@@ -66,9 +68,11 @@ fn initialize_event_info(&event_handler) -> anyhow::Result<EventInfo> {
         player: Player::new(),
         camera: Camera::default(),
         fps_counter: FpsCounter::new(),
+        last_frame: Instant::now(),
         application,
         user_window,
         cursor_position: [0.0; 2],
+        physics_accumulator: 0.0,
         minimized: false,
         menu_click: false,
         destroy_application: false
@@ -81,12 +85,6 @@ fn main() -> Result<()> {
     initialize_error_handler();
     let event_handler = EventLoop::new()?;
     let mut event_info = initialize_event_info(&event_handler)?;
-
-    const PHYSICS_TICK: f32 = 1.0 / 60.0;
-    const MAX_PHYSICS_CATCHUP: f32 = 0.25;
-    let mut physics_accumulator: f32 = 0.0;
-    let mut last_frame = Instant::now();
-
     release_cursor(&event_info.user_window);
 
     event_handler
@@ -94,7 +92,7 @@ fn main() -> Result<()> {
             
         Event::WindowEvent { event, .. } => { handle_window_event(event, &mut event_info, current_window); }
         Event::DeviceEvent { event, .. } => { handle_device_event(event, &mut event_info); }
-        Event::AboutToWait => {}
+        Event::AboutToWait => {handle_wait_event(&mut event_info);}
         _ => (),
         
     }).expect("Main function crashed!");
@@ -181,6 +179,49 @@ fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
 
 fn handle_keyboard_input() {
     todo!();
+}
+
+fn handle_wait_event(event_info: &mut EventInfo) {
+    const MAX_PHYSICS_CATCHUP: f32 = 0.25;
+    const PHYSICS_TICK: f32 = 1.0 / 60.0;
+    let now = Instant::now();
+    let delta_time = (now - event_info.last_frame).as_secs_f32();
+    event_info.last_frame = now;
+    event_info.fps_counter.tick(delta_time);
+    match &mut event_info.game_state {
+        GameState::Playing => {
+            event_info.input.apply_mouse_look(&mut event_info.player);
+            event_info.physics_accumulator = (event_info.physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
+            while event_info.physics_accumulator >= PHYSICS_TICK {
+                    if let Some(world) = event_info.application.world() {
+                        let local_p = world.metric.sample_metric_at_pos(event_info.player.world_position()).minkowski_exponent;
+                        event_info.input.tick_movement(&mut event_info.player, world, PHYSICS_TICK, local_p);
+                    }
+                    event_info.physics_accumulator -= PHYSICS_TICK;
+                }
+                event_info.camera.sync_from_player(&event_info.player);
+                event_info.input.take_left_click();
+                event_info.input.take_right_click();
+            }
+            GameState::PreGenerating { .. } => {
+                unsafe { application.update_world(&camera).ok() };
+                tick_pregen(&mut game_state, &mut application, &user_window, &mut camera, &mut player);
+            }
+            GameState::EnteringWorld { .. } => {
+                if let GameState::EnteringWorld { world_dir, seed } = std::mem::replace(&mut game_state, GameState::Playing) {
+                    if let Err(e) = unsafe { application.enter_world(&world_dir, seed) } {
+                        eprintln!("Failed to enter world: {e}");
+                        game_state = GameState::TitleScreen;
+                    } else {
+                        grab_cursor(&user_window);
+                        camera = Camera::default();
+                        player = Player::new();
+                    }
+                }
+            }
+            _ => {}
+        }
+        user_window.request_redraw();
 }
 
 fn temp() {
@@ -272,54 +313,7 @@ fn temp() {
                     }
                 }
             }
-            Event::AboutToWait => {
-                let now = Instant::now();
-                let delta_time = (now - last_frame).as_secs_f32();
-                last_frame = now;
-
-                fps_counter.tick(delta_time);
-
-                match &mut game_state {
-                    GameState::Playing => {
-                        // Mouse look every frame.
-                        input.apply_mouse_look(&mut player);
-                        // Fixed-step physics + movement.
-                        physics_accumulator = (physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
-                        while physics_accumulator >= PHYSICS_TICK {
-                            if let Some(world) = application.world() {
-                                let local_p = world.metric.sample_metric_at_pos(player.world_position()).minkowski_exponent;
-                                input.tick_movement(&mut player, world, PHYSICS_TICK, local_p);
-                            }
-                            physics_accumulator -= PHYSICS_TICK;
-                        }
-                        camera.sync_from_player(&player);
-                        // Block break/place is disabled: it depended on the deleted
-                        // raycast module and VulkanApplication::set_block_at, both
-                        // removed with the sphere/VR/SVDAG cleanup. TODO: reimplement
-                        // against the flat-world World/ChunkPos API.
-                        input.take_left_click();
-                        input.take_right_click();
-                    }
-                    GameState::PreGenerating { .. } => {
-                        unsafe { application.update_world(&camera).ok() };
-                        tick_pregen(&mut game_state, &mut application, &user_window, &mut camera, &mut player);
-                    }
-                    GameState::EnteringWorld { .. } => {
-                        if let GameState::EnteringWorld { world_dir, seed } = std::mem::replace(&mut game_state, GameState::Playing) {
-                            if let Err(e) = unsafe { application.enter_world(&world_dir, seed) } {
-                                eprintln!("Failed to enter world: {e}");
-                                game_state = GameState::TitleScreen;
-                            } else {
-                                grab_cursor(&user_window);
-                                camera = Camera::default();
-                                player = Player::new();
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                user_window.request_redraw();
-            }
+            Event::AboutToWait => 
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
                 ..
