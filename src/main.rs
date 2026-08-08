@@ -41,6 +41,8 @@ struct EventInfo {
     game_state: GameState,
     input: InputState,
     player: Player,
+    camera: Camera,
+    fps_counter: FpsCounter,
     application: VulkanApplication,
     user_window: Window,
     cursor_position: [f32; 2],
@@ -62,6 +64,8 @@ fn initialize_event_info(&event_handler) -> anyhow::Result<EventInfo> {
         game_state: GameState::TitleScreen,
         input: InputState::new(),
         player: Player::new(),
+        camera: Camera::default(),
+        fps_counter: FpsCounter::new(),
         application,
         user_window,
         cursor_position: [0.0; 2],
@@ -78,19 +82,17 @@ fn main() -> Result<()> {
     let event_handler = EventLoop::new()?;
     let mut event_info = initialize_event_info(&event_handler)?;
 
-    let mut camera = Camera::default();
     const PHYSICS_TICK: f32 = 1.0 / 60.0;
     const MAX_PHYSICS_CATCHUP: f32 = 0.25;
     let mut physics_accumulator: f32 = 0.0;
     let mut last_frame = Instant::now();
-    let mut fps_counter = FpsCounter::new();
 
     release_cursor(&event_info.user_window);
 
     event_handler
         .run(move |event, current_window| match event {
             
-        Event::WindowEvent { event, .. } => { handle_window_event(event, &mut event_info); }
+        Event::WindowEvent { event, .. } => { handle_window_event(event, &mut event_info, current_window); }
         Event::DeviceEvent { event, .. } => { handle_device_event(event, &mut event_info); }
         Event::AboutToWait => {}
         _ => (),
@@ -99,59 +101,68 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo) {
+fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, current_window: &EventLoopWindowTarget<()>) -> anyhow::Result<()> {
     match event {
-        WindowEvent::CloseRequested => { exit_program(&mut event_info.destroy_application, event_info.current_window, &mut event_info.application); }
-        WindowEvent::Resized(size) => {  
+        WindowEvent::CloseRequested => {
+            exit_program(&mut event_info.destroy_application, current_window, &mut event_info.application);
+        }
+        WindowEvent::Resized(size) => {
             if size.width == 0 || size.height == 0 {
-            event_info.minimized = &mut true;
-        } else {
-            event_info.minimized = &mut false;
-            event_info.application.resized = true;
-        }}
-        WindowEvent::CursorMoved {device_id, position } => { cursor_pos = [position.x as f32, position.y as f32]; }
-        WindowEvent::KeyboardInput { device_id, event, is_synthetic } => { handle_keyboard_input() }
-        WindowEvent::MouseInput { device_id, state: ElementState::Pressed, button: MouseButton::Left } => {
-            if game_state.is_menu() {
-            menu_click = true;
-        } else {
-            input.mouse_pressed(MouseButton::Left);
-        }}
-        WindowEvent::MouseInput { device_id, state: ElementState::Pressed, button } => { if !game_state.is_menu() { input.mouse_pressed(button); } }
+                event_info.minimized = true;
+            } else {
+                event_info.minimized = false;
+                event_info.application.resized = true;
+            }
+        }
+        WindowEvent::CursorMoved { position, .. } => {
+            event_info.cursor_position = [position.x as f32, position.y as f32];
+        }
+        WindowEvent::KeyboardInput {..} => handle_keyboard_input(),
+        WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+            if event_info.game_state.is_menu() {
+                event_info.menu_click = true;
+            } else {
+                event_info.input.mouse_pressed(MouseButton::Left);
+            }
+        }
+        WindowEvent::MouseInput {state: ElementState::Pressed, button, .. } => {
+            if !event_info.game_state.is_menu() {
+                event_info.input.mouse_pressed(button);
+            }
+        }
         WindowEvent::RedrawRequested {} => {
-            if *event_info.destroy_application || *event_info.minimized {
-                return;
+            if event_info.destroy_application || event_info.minimized {
+                return Ok(());
             }
             let eyes = EyeMatrices::from_camera(&event_info.camera, event_info.application.swapchain_extent());
             let result = match &event_info.game_state {
-                GameState::Playing => { draw_ui(event_info, eyes); }
+                GameState::Playing => draw_ui(event_info, eyes),
                 _ => {
-                    let extent = application.swapchain_extent();
+                    let extent = event_info.application.swapchain_extent();
                     let screen_width = extent.width as f32;
                     let screen_height = extent.height as f32;
-                    let clicked = menu_click;
-                    menu_click = false;
+                    let clicked = event_info.menu_click;
+                    event_info.menu_click = false;
 
-                    application.ui.begin_frame();
-                    draw_menu(&mut application.ui, &mut game_state, sw, sh, cursor_pos, clicked);
-                    unsafe { application.render_menu_frame(&user_window, &eyes) }
+                    event_info.application.ui.begin_frame();
+                    draw_menu(&mut event_info.application.ui, &mut event_info.game_state, screen_width, screen_height, event_info.cursor_position, clicked);
+                    unsafe { event_info.application.render_menu_frame(&event_info.user_window, &eyes) }
                 }
             };
             if let Err(e) = result {
                 eprintln!("Render error: {e}");
-                exit_program(&mut destroy_application, current_window, &mut application);
+                exit_program(&mut event_info.destroy_application, current_window, &mut event_info.application);
             }
         }
-        
-        _ => ()
-        
-        // ... all the other patterns
+        _ => {}
     }
+    Ok(())
 }
 
-fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> anyhow::Result<>{
+
+fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> anyhow::Result<()> {
     event_info.application.ui.begin_frame();
-    event_info.application.ui.draw_text(&fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
+    event_info.application.ui.draw_text(&event_info.fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
     let pos_text = format!("pos=({:.1},{:.1s},{:.1})", event_info.player.x, event_info.player.y, event_info.player.z);
     event_info.application.ui.draw_text(&pos_text, 4.0, 22.0, 14.0, [1.0, 1.0, 1.0, 0.8]);
     unsafe { event_info.application.render_frame(&event_info.user_window, &event_info.camera, &eyes) }
@@ -160,8 +171,8 @@ fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> anyhow::Result<>{
 fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
     match event {
         DeviceEvent::MouseMotion { delta: (dx, dy) } => {
-            if matches!(game_state, GameState::Playing) {
-                input.accumulate_mouse_delta(dx, dy);
+            if matches!(event_info.game_state, GameState::Playing) {
+                event_info.input.accumulate_mouse_delta(dx, dy);
             }
         }
          _ => ()
