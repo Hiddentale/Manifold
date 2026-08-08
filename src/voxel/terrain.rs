@@ -112,7 +112,7 @@ struct TerrainParams {
     biome: Biome,
 }
 
-fn sample_params(noises: &WorldNoises, world_x: f64, world_z: f64) -> TerrainParams {
+fn sample_terrain_paramaters(noises: &WorldNoises, world_x: f64, world_z: f64) -> TerrainParams {
     let initial_coordinates = [world_x, 0.0, world_z];
     let warped_x = world_x + noises.warp_x.get(initial_coordinates) * WARP_STRENGTH;
     let warped_z = world_z + noises.warp_z.get(initial_coordinates) * WARP_STRENGTH;
@@ -235,7 +235,7 @@ fn fill_density_column(
 ) {
     let world_x = chunk_x as f64 * CHUNK_SIZE as f64 + x as f64 + 0.5;
     let world_z = chunk_z as f64 * CHUNK_SIZE as f64 + z as f64 + 0.5;
-    let params = sample_params(noises, world_x, world_z);
+    let params = sample_terrain_paramaters(noises, world_x, world_z);
     let surface_block = biome::surface_block(params.biome);
     let subsurface_block = biome::subsurface_block(params.biome);
 

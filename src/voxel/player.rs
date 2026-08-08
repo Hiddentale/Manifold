@@ -6,9 +6,7 @@ use glam::Vec3;
 const GRAVITY: f32 = 20.0;
 const JUMP_VELOCITY: Vec3 = Vec3::new(0.0, 8.0, 0.0);
 const CAMERA_FORWARD_OFFSET: f32 = 0.25;
-/// World-space up. Gravity always pulls along -Y in the flat world, so this
-/// is the single fixed reference for both physics and camera-relative math.
-const WORLD_UP: Vec3 = Vec3::new(0.0, 1.0, 0.0);
+const WORLD_UP_VECTOR: Vec3 = Vec3::new(0.0, 1.0, 0.0);
 /// Keeps pitch just short of ±90° so forward/right never go parallel to WORLD_UP.
 const PITCH_LIMIT: f32 = 1.5533; // ~89 degrees
 
@@ -57,16 +55,17 @@ impl Player {
         self.world_position() + self.forward * CAMERA_FORWARD_OFFSET
     }
 
+    /// Cartesian right direction relative to player.
     pub fn right_vector(&self) -> Vec3 {
         self.right
     }
 
-    /// World-space up. Fixed, since gravity is always -Y in the flat world.
+    /// Cartesian unit vector in the up direction.
     pub fn up(&self) -> Vec3 {
-        WORLD_UP
+        WORLD_UP_VECTOR
     }
 
-    /// Turn left/right around world-up. `delta` in radians.
+    /// Turn left/right around world-up.
     pub fn rotate_yaw(&mut self, delta: f32) {
         self.yaw += delta;
         self.update_look_vectors();
@@ -78,14 +77,16 @@ impl Player {
         self.update_look_vectors();
     }
 
+    /// Compute the player's forward and right direction vectors from the current yaw
+    /// and pitch angles.
     fn update_look_vectors(&mut self) {
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
         self.forward = Vec3::new(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch).normalize();
-        self.right = self.forward.cross(WORLD_UP).normalize();
+        self.right = self.forward.cross(WORLD_UP_VECTOR).normalize();
     }
 
-    /// Direct, unchecked positional offset — fly mode has no collision.
+    /// Collisionless moving
     pub fn fly_move(&mut self, delta: Vec3) {
         self.x += delta.x;
         self.y += delta.y;
@@ -120,8 +121,7 @@ impl Player {
     }
 
     /// Walk-mode horizontal move with wall sliding: if the combined (x, z)
-    /// move is blocked, retry each axis independently so the player slides
-    /// along the wall instead of stopping dead.
+    /// move is blocked, retry each axis independently.
     pub fn walk(&mut self, direction: Vec3, world: &World) {
         if self.can_move(direction.x, 0.0, direction.z, world) {
             return;

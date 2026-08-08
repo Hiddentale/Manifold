@@ -9,6 +9,7 @@ use graphical_core::camera::{Camera, EyeMatrices};
 use graphical_core::input::InputState;
 use graphical_core::ui_pipeline::UiPipeline;
 use graphical_core::vulkan_object::VulkanApplication;
+use winit::window::Window;
 use std::time::Instant;
 use voxel::player::Player;
 use vulkan_rust::{vk, Version};
@@ -63,29 +64,84 @@ fn main() -> Result<()> {
 
     event_handler
         .run(move |event, current_window| match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                exit_program(&mut destroy_application, current_window, &mut application);
+        Event::WindowEvent { event, .. } => {
+            handle_window_event(
+                event,
+                &mut game_state,
+                &mut input,
+                &mut player,
+                &mut application,
+                current_window,
+                &user_window,
+                &mut cursor_pos,
+                &mut menu_click,
+                &mut destroy_application,
+            );
+        }
+        Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta: (dx, dy) }, .. } => {
+            if matches!(game_state, GameState::Playing) {
+                input.accumulate_mouse_delta(dx, dy);
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                if size.width == 0 || size.height == 0 {
-                    minimized = true;
-                } else {
-                    minimized = false;
-                    application.resized = true;
-                }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CursorMoved { position, .. },
-                ..
-            } => {
-                cursor_pos = [position.x as f32, position.y as f32];
-            }
+        }
+        Event::AboutToWait => {
+            // ... physics and frame logic
+        }
+        Event::WindowEvent {
+            event: WindowEvent::RedrawRequested,
+            ..
+        } => {
+            // ... render logic
+        }
+        _ => (),
+    }).expect("Main function crashed!");
+    Ok(())
+}
+
+fn handle_window_event(
+    event: WindowEvent,
+    game_state: &mut GameState,
+    input: &mut InputState,
+    player: &mut Player,
+    application: &mut VulkanApplication,
+    current_window: &EventLoopWindowTarget<()>,
+    user_window: &winit::window::Window,
+    cursor_pos: &mut [f32; 2],
+    menu_click: &mut bool,
+    destroy_application: &mut bool,
+) {
+    match event {
+        WindowEvent::CloseRequested => { exit_program(&mut destroy_application, current_window, &mut application); }
+        WindowEvent::Resized(size) => {  
+            if size.width == 0 || size.height == 0 {
+            minimized = true;
+        } else {
+            minimized = false;
+            application.resized = true;
+        }}
+        WindowEvent::CursorMoved { position } => { cursor_pos = [position.x as f32, position.y as f32]; }
+        WindowEvent::KeyboardInput { device_id, event, is_synthetic } => { handle_keyboard_input() }
+        WindowEvent::MouseInput { device_id, state: ElementState::Pressed, button: MouseButton::Left } => {
+            if game_state.is_menu() {
+            menu_click = true;
+        } else {
+            input.mouse_pressed(MouseButton::Left);
+        }}
+        WindowEvent::MouseInput { device_id, state: ElementState::Pressed, button } => { if !game_state.is_menu() { input.mouse_pressed(button); } }
+        
+        _ => (),
+        
+        // ... all the other patterns
+    }
+}
+
+def handle_keyboard_input() {
+    todo!();
+}
+
+def temp() {
+    
+    event_handler
+        .run(move |event, current_window| match event {
             Event::WindowEvent {
                 event: WindowEvent::KeyboardInput { event: key_event, .. },
                 ..
@@ -172,34 +228,6 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::MouseInput {
-                        state: ElementState::Pressed,
-                        button: MouseButton::Left,
-                        ..
-                    },
-                ..
-            } => {
-                if game_state.is_menu() {
-                    menu_click = true;
-                } else {
-                    input.mouse_pressed(MouseButton::Left);
-                }
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::MouseInput {
-                        state: ElementState::Pressed,
-                        button,
-                        ..
-                    },
-                ..
-            } => {
-                if !game_state.is_menu() {
-                    input.mouse_pressed(button);
-                }
-            }
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion { delta: (dx, dy) },
                 ..
@@ -223,7 +251,7 @@ fn main() -> Result<()> {
                         physics_accumulator = (physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
                         while physics_accumulator >= PHYSICS_TICK {
                             if let Some(world) = application.world() {
-                                let local_p = world.metric.sample(player.world_position()).p;
+                                let local_p = world.metric.sample_metric_at_pos(player.world_position()).minkowski_exponent;
                                 input.tick_movement(&mut player, world, PHYSICS_TICK, local_p);
                             }
                             physics_accumulator -= PHYSICS_TICK;
