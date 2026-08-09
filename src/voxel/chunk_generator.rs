@@ -83,6 +83,10 @@ impl ChunkGenerator {
 
 impl Drop for ChunkGenerator {
     fn drop(&mut self) {
+        let (dummy_sender, _) = crossbeam_channel::unbounded();
+        let sender = std::mem::replace(&mut self.request_sender, dummy_sender);
+        drop(sender);
+
         for worker in self._workers.drain(..) {
             if let Err(panic) = worker.join() {
                 log::error!("Chunk generator worker panicked: {panic:?}");
