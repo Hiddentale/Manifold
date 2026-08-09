@@ -55,27 +55,23 @@ impl VertexPullPipeline {
 
 unsafe fn create_descriptor_layout(device: &Device) -> anyhow::Result<vk::DescriptorSetLayout> {
     let bindings = [
-        // Binding 0: texture sampler (FRAGMENT) — matches shader.frag, unchanged.
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-        // Binding 1: CameraUBO (VERTEX | FRAGMENT)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(1)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
-        // Binding 2: FacesBuffer (VERTEX, read-only) — per-phase.
         *vk::DescriptorSetLayoutBinding::builder()
-            .binding(2)
+            .binding(3)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX),
-        // Binding 3: ChunkInfoBuffer (VERTEX, read-only)
         *vk::DescriptorSetLayoutBinding::builder()
-            .binding(3)
+            .binding(4)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::VERTEX),
@@ -141,12 +137,12 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data:
                 .buffer_info(&ubo_info),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
-                .dst_binding(2)
+                .dst_binding(3)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .buffer_info(&faces_info),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
-                .dst_binding(3)
+                .dst_binding(4)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .buffer_info(&chunk_info),
         ];

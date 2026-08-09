@@ -1,7 +1,5 @@
 //! Flat world coordinate space.
 
-#![allow(dead_code)]
-
 use super::chunk::CHUNK_SIZE;
 use glam::{DVec3, Vec3};
 

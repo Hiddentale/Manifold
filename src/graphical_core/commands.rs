@@ -480,8 +480,10 @@ pub unsafe fn create_sync_objects(device: &Device, data: &mut VulkanApplicationD
 
     for _ in 0..MAX_FRAMES_IN_FLIGHT {
         data.image_available_semaphores.push(device.create_semaphore(&semaphore_info, None)?);
-        data.render_finished_semaphores.push(device.create_semaphore(&semaphore_info, None)?);
         data.in_flight_fences.push(device.create_fence(&fence_info, None)?);
+    }
+    for _ in 0..data.swapchain_images.len() {
+        data.render_finished_semaphores.push(device.create_semaphore(&semaphore_info, None)?);
     }
     data.images_in_flight = data.swapchain_images.iter().map(|_| vk::Fence::null()).collect();
     Ok(())

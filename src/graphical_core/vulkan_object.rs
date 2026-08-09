@@ -655,7 +655,7 @@ impl VulkanApplication {
         let wait_semaphores = &[data.image_available_semaphores[self.frame]];
         let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let command_buffers = &[data.command_buffers[image_index]];
-        let signal_semaphores = &[data.render_finished_semaphores[self.frame]];
+        let signal_semaphores = &[data.render_finished_semaphores[image_index]];
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
             .wait_dst_stage_mask(wait_stages)
@@ -670,7 +670,7 @@ impl VulkanApplication {
 
     unsafe fn present_frame(&mut self, image_index: usize, window: &Window) -> anyhow::Result<()> {
         let data = &self.vulkan_application_data;
-        let signal_semaphores = &[data.render_finished_semaphores[self.frame]];
+        let signal_semaphores = &[data.render_finished_semaphores[image_index]];
         let swapchains = &[data.swapchain];
         let image_indices = &[image_index as u32];
         let present_info = vk::PresentInfoKHR::builder()
