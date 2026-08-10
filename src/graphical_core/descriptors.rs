@@ -49,13 +49,7 @@ pub fn allocate_set(device: &Device, descriptor_pool: vk::DescriptorPool, layout
 }
 
 /// Writes actual resources (texture sampler + camera UBO) into a descriptor set.
-pub fn update_set(
-    device: &Device,
-    descriptor_set: vk::DescriptorSet,
-    image_view: vk::ImageView,
-    sampler: vk::Sampler,
-    uniform_buffer: vk::Buffer,
-) {
+pub fn update_set(device: &Device, descriptor_set: vk::DescriptorSet, image_view: vk::ImageView, sampler: vk::Sampler, uniform_buffer: vk::Buffer) {
     // Bind arrays to locals so they outlive the WriteDescriptorSet structs.
     // The builder stores raw pointers — dereferencing (*) copies the struct but
     // not the pointed-to data. Temporaries would dangle in release mode.

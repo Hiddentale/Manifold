@@ -175,15 +175,27 @@ const HIGHLAND_RANGE: f64 = HIGHLAND_END - HIGHLAND_START;
 
 fn map_continental_curve(continentalness: f64) -> f64 {
     if continentalness < DEEP_OCEAN_OFFSET {
-        lerp(DEEP_OCEAN_HEIGHT_MIN, DEEP_OCEAN_HEIGHT_MAX, (continentalness - DEEP_OCEAN_START) / DEEP_OCEAN_RANGE)
+        lerp(
+            DEEP_OCEAN_HEIGHT_MIN,
+            DEEP_OCEAN_HEIGHT_MAX,
+            (continentalness - DEEP_OCEAN_START) / DEEP_OCEAN_RANGE,
+        )
     } else if continentalness < OCEAN_SHELF_OFFSET {
-        lerp(OCEAN_SHELF_HEIGHT_MIN, OCEAN_SHELF_HEIGHT_MAX, (continentalness - OCEAN_SHELF_START) / OCEAN_SHELF_RANGE)
+        lerp(
+            OCEAN_SHELF_HEIGHT_MIN,
+            OCEAN_SHELF_HEIGHT_MAX,
+            (continentalness - OCEAN_SHELF_START) / OCEAN_SHELF_RANGE,
+        )
     } else if continentalness < COAST_OFFSET {
         lerp(COAST_HEIGHT_MIN, COAST_HEIGHT_MAX, (continentalness - COAST_START) / COAST_RANGE)
     } else if continentalness < LOWLAND_OFFSET {
         lerp(LOWLAND_HEIGHT_MIN, LOWLAND_HEIGHT_MAX, (continentalness - LOWLAND_START) / LOWLAND_RANGE)
     } else {
-        lerp(HIGHLAND_HEIGHT_MIN, HIGHLAND_HEIGHT_MAX, (continentalness - HIGHLAND_START) / HIGHLAND_RANGE)
+        lerp(
+            HIGHLAND_HEIGHT_MIN,
+            HIGHLAND_HEIGHT_MAX,
+            (continentalness - HIGHLAND_START) / HIGHLAND_RANGE,
+        )
     }
 }
 
@@ -195,12 +207,11 @@ const MINIMUM_EROSION_FACTOR: f64 = 0.3;
 const MAXIMUM_EROSION_FACTOR: f64 = 1.0;
 const EROSION_RANGE: f64 = MAXIMUM_EROSION_FACTOR - MINIMUM_EROSION_FACTOR;
 
-
 /// Calculates the height of a certain (x,z) position.
 pub(crate) fn compute_height_from_params(noises: &WorldNoises, x: f64, z: f64, continentalness: f64, erosion: f64, weirdness: f64) -> usize {
     let average_continental_height = map_continental_curve(continentalness);
     let coordinates = [x, 0.0, z];
-    
+
     let erosion_factor = (MINIMUM_EROSION_FACTOR + erosion * EROSION_RANGE).clamp(MINIMUM_EROSION_FACTOR, MAXIMUM_EROSION_FACTOR);
     let mountain = noises.mountain.get(coordinates) * MOUNTAIN_AMPLITUDE * erosion_factor;
     let detail = noises.detail.get(coordinates) * DETAIL_AMPLITUDE * erosion_factor;
@@ -225,14 +236,7 @@ pub fn generate_column(chunk_x: i32, chunk_z: i32, seed: u32) -> Vec<Chunk> {
     chunks
 }
 
-fn fill_density_column(
-    chunks: &mut [Chunk],
-    chunk_x: i32,
-    chunk_z: i32,
-    x: usize,
-    z: usize,
-    noises: &WorldNoises,
-) {
+fn fill_density_column(chunks: &mut [Chunk], chunk_x: i32, chunk_z: i32, x: usize, z: usize, noises: &WorldNoises) {
     let world_x = chunk_x as f64 * CHUNK_SIZE as f64 + x as f64 + 0.5;
     let world_z = chunk_z as f64 * CHUNK_SIZE as f64 + z as f64 + 0.5;
     let params = sample_terrain_paramaters(noises, world_x, world_z);
@@ -242,7 +246,7 @@ fn fill_density_column(
     for (chunk_y, chunk) in chunks.iter_mut().enumerate().take(CHUNK_LAYERS) {
         for local_y in 0..CHUNK_SIZE {
             let world_y = (chunk_y * CHUNK_SIZE + local_y) as f64;
-            let block = find_blocktype(world_x, world_y, world_z, params.surface_height, surface_block, subsurface_block, noises, );
+            let block = find_blocktype(world_x, world_y, world_z, params.surface_height, surface_block, subsurface_block, noises);
             if block != BlockType::Air {
                 chunk.set_block_at(x, local_y, z, block);
             }
@@ -252,16 +256,23 @@ fn fill_density_column(
 
 const SURFACE_DEPTH: usize = 1;
 
-fn find_blocktype(world_x: f64, world_y: f64, world_z: f64, height: usize, surface: BlockType, subsurface: BlockType, noises: &WorldNoises) -> BlockType {
+fn find_blocktype(
+    world_x: f64,
+    world_y: f64,
+    world_z: f64,
+    height: usize,
+    surface: BlockType,
+    subsurface: BlockType,
+    noises: &WorldNoises,
+) -> BlockType {
     if world_y > height as f64 {
         if world_y <= SEA_LEVEL as f64 {
-            return BlockType::Water 
-        } 
-        else {
-            return BlockType::Air 
+            return BlockType::Water;
+        } else {
+            return BlockType::Air;
         };
     }
-    
+
     let depth_from_surface = (height as f64 - world_y).max(0.0).round() as usize;
     let block = if depth_from_surface < SURFACE_DEPTH {
         surface

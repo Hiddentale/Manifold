@@ -163,7 +163,6 @@ impl Player {
     }
 }
 
-
 fn block_is_solid(block_x: i32, block_y: i32, block_z: i32, world: &World) -> bool {
     world.block_solid_at(block_x, block_y, block_z)
 }

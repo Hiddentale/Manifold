@@ -118,9 +118,7 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data:
             .buffer(data.uniform_buffer)
             .range(std::mem::size_of::<UniformBufferObject>() as u64)];
 
-        let faces_info = [*vk::DescriptorBufferInfo::builder()
-            .buffer(pool.faces_buffer[phase])
-            .range(vk::WHOLE_SIZE)];
+        let faces_info = [*vk::DescriptorBufferInfo::builder().buffer(pool.faces_buffer[phase]).range(vk::WHOLE_SIZE)];
 
         let chunk_info = [*vk::DescriptorBufferInfo::builder().buffer(pool.chunk_info_buffer).range(vk::WHOLE_SIZE)];
 

@@ -472,7 +472,6 @@ pub(crate) unsafe fn bind_vertex_pull_pipeline_and_draw_indirect(
     device.cmd_draw_indirect(cmd, draw_args_buf, 0, 1, 16);
 }
 
-
 /// Creates semaphores and fences for each frame in flight.
 pub unsafe fn create_sync_objects(device: &Device, data: &mut VulkanApplicationData) -> anyhow::Result<()> {
     let semaphore_info = vk::SemaphoreCreateInfo::builder();

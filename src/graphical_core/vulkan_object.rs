@@ -282,7 +282,12 @@ unsafe fn create_core_infrastructure(window: &Window) -> anyhow::Result<CoreInfr
     choose_gpu(&instance, &mut data, None)?;
     let device = create_logical_device(&entry, &instance, &mut data)?;
 
-    Ok(CoreInfrastructure { entry, instance, device, data })
+    Ok(CoreInfrastructure {
+        entry,
+        instance,
+        device,
+        data,
+    })
 }
 
 unsafe fn create_presentation_pipeline(
@@ -312,13 +317,7 @@ unsafe fn create_resources(device: &Device, instance: &Instance, data: &mut Vulk
         .first()
         .copied()
         .ok_or_else(|| anyhow!("Failed to allocate descriptor set"))?;
-    descriptors::update_set(
-        device,
-        descriptor_set,
-        texture_image_view,
-        texture_sampler,
-        data.uniform_buffer,
-    );
+    descriptors::update_set(device, descriptor_set, texture_image_view, texture_sampler, data.uniform_buffer);
 
     data.texture_image = texture_image;
     data.texture_memory = texture_memory;
@@ -606,7 +605,9 @@ impl VulkanApplication {
                 if !wr.voxel_pool.has_chunk(&neighbor) {
                     continue;
                 }
-                let Some(neighbor_chunk) = wr.world.get_chunk_at(neighbor) else { continue };
+                let Some(neighbor_chunk) = wr.world.get_chunk_at(neighbor) else {
+                    continue;
+                };
                 if neighbor_chunk.contains_no_air() && neighbors_all_opaque(&wr.world, neighbor) {
                     to_evict.insert(neighbor);
                 }

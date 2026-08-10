@@ -8,7 +8,10 @@ pub struct MetricParams {
 }
 
 impl MetricParams {
-    pub const EUCLIDEAN: Self = Self { minkowski_exponent: 2.0, warpedness: 0.0 };
+    pub const EUCLIDEAN: Self = Self {
+        minkowski_exponent: 2.0,
+        warpedness: 0.0,
+    };
 }
 
 /// A localized region where the metric deviates from Euclidean.
@@ -243,7 +246,11 @@ mod tests {
             active: true,
         });
         let params = field.sample_metric_at_pos(Vec3::ZERO);
-        assert!(approx(params.minkowski_exponent, 1.0), "expected p=1.0, got {}", params.minkowski_exponent);
+        assert!(
+            approx(params.minkowski_exponent, 1.0),
+            "expected p=1.0, got {}",
+            params.minkowski_exponent
+        );
         assert!(approx(params.warpedness, 1.0));
     }
 
@@ -273,7 +280,11 @@ mod tests {
             active: true,
         });
         let params = field.sample_metric_at_pos(Vec3::new(30.0, 0.0, 0.0));
-        assert!(params.minkowski_exponent > 1.0 && params.minkowski_exponent < 2.0, "gradient p={} not between 1 and 2", params.minkowski_exponent);
+        assert!(
+            params.minkowski_exponent > 1.0 && params.minkowski_exponent < 2.0,
+            "gradient p={} not between 1 and 2",
+            params.minkowski_exponent
+        );
         assert!(params.warpedness > 0.0 && params.warpedness < 1.0);
     }
 
@@ -311,7 +322,11 @@ mod tests {
             active: true,
         });
         let params = field.sample_metric_at_pos(Vec3::ZERO);
-        assert!(params.minkowski_exponent > 1.0 && params.minkowski_exponent < 50.0, "overlap p={} not intermediate", params.minkowski_exponent);
+        assert!(
+            params.minkowski_exponent > 1.0 && params.minkowski_exponent < 50.0,
+            "overlap p={} not intermediate",
+            params.minkowski_exponent
+        );
     }
 
     #[test]
@@ -328,7 +343,11 @@ mod tests {
         for i in 1..=10 {
             let dist = 50.0 - (i as f32 * 4.0); // walk from outer edge inward
             let params = field.sample_metric_at_pos(Vec3::new(dist, 0.0, 0.0));
-            assert!(params.minkowski_exponent <= prev_minkowski_exponent + EPSILON, "p increased at dist={dist}: {} > {prev_minkowski_exponent}", params.minkowski_exponent);
+            assert!(
+                params.minkowski_exponent <= prev_minkowski_exponent + EPSILON,
+                "p increased at dist={dist}: {} > {prev_minkowski_exponent}",
+                params.minkowski_exponent
+            );
             prev_minkowski_exponent = params.minkowski_exponent;
         }
     }

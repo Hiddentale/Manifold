@@ -1,5 +1,5 @@
-use crate::graphical_core::camera::EyeMatrices;
 use crate::event_handling::EventInfo;
+use crate::graphical_core::camera::EyeMatrices;
 
 pub struct FpsCounter {
     frames: u32,
@@ -33,7 +33,10 @@ impl FpsCounter {
 
 pub fn draw_ui(event_info: &mut EventInfo, eyes: EyeMatrices) -> anyhow::Result<()> {
     event_info.application.ui.begin_frame();
-    event_info.application.ui.draw_text(&event_info.fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
+    event_info
+        .application
+        .ui
+        .draw_text(&event_info.fps_counter.display(), 4.0, 4.0, 16.0, [1.0, 1.0, 1.0, 0.8]);
     let pos_text = format!("pos=({:.1},{:.1},{:.1})", event_info.player.x, event_info.player.y, event_info.player.z);
     event_info.application.ui.draw_text(&pos_text, 4.0, 22.0, 14.0, [1.0, 1.0, 1.0, 0.8]);
     unsafe { event_info.application.render_frame(&event_info.user_window, &event_info.camera, &eyes) }

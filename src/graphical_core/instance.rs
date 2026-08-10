@@ -75,11 +75,7 @@ pub unsafe fn create_instance(_window: &Window, entry: &Entry, data: &mut Vulkan
 }
 
 /// Creates a logical device with graphics and presentation queues.
-pub unsafe fn create_logical_device(
-    entry: &Entry,
-    instance: &Instance,
-    data: &mut VulkanApplicationData,
-) -> anyhow::Result<Device> {
+pub unsafe fn create_logical_device(entry: &Entry, instance: &Instance, data: &mut VulkanApplicationData) -> anyhow::Result<Device> {
     let indices = graphical_core::queue_families::RequiredQueueFamilies::get(instance, data, data.physical_device)?;
     let mut unique_indices = HashSet::new();
 

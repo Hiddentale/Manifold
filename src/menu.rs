@@ -1,10 +1,7 @@
 use crate::game_state::GameState;
+use crate::graphical_core::{ui_pipeline::UiPipeline, vulkan_object::WORLD_DISTANCE};
 use crate::storage::world_meta::{create_world, list_worlds};
 use crate::utils::rand_seed;
-use crate::graphical_core::{
-    ui_pipeline::UiPipeline, 
-    vulkan_object::WORLD_DISTANCE,
-};
 
 const BUTTON_W: f32 = 300.0;
 const BUTTON_H: f32 = 40.0;
@@ -16,7 +13,7 @@ const TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const DIM_TEXT: [f32; 4] = [0.7, 0.7, 0.7, 1.0];
 
 /// Draw a button, returns true if clicked.
-fn draw_button(ui: &mut UiPipeline, label: &str, x: f32, y: f32, cursor: [f32; 2], clicked: bool) -> bool {
+fn button_clicked(ui: &mut UiPipeline, label: &str, x: f32, y: f32, cursor: [f32; 2], clicked: bool) -> bool {
     let hovered = cursor[0] >= x && cursor[0] <= x + BUTTON_W && cursor[1] >= y && cursor[1] <= y + BUTTON_H;
     let color = if hovered { BUTTON_HOVER } else { BUTTON_COLOR };
     ui.draw_rect(x, y, BUTTON_W, BUTTON_H, color);
@@ -36,12 +33,10 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
             ui.draw_text(title, (sw - tw) / 2.0, sh * 0.2, TITLE_SIZE, TEXT_COLOR);
 
             let cx = (sw - BUTTON_W) / 2.0;
-            if draw_button(ui, "Singleplayer", cx, sh * 0.45, cursor, clicked) {
-                *state = GameState::WorldSelect {
-                    worlds: list_worlds(),
-                };
+            if button_clicked(ui, "Singleplayer", cx, sh * 0.45, cursor, clicked) {
+                *state = GameState::WorldSelect { worlds: list_worlds() };
             }
-            if draw_button(ui, "Quit", cx, sh * 0.55, cursor, clicked) {
+            if button_clicked(ui, "Quit", cx, sh * 0.55, cursor, clicked) {
                 std::process::exit(0);
             }
         }
@@ -55,7 +50,7 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
             let mut selected = None;
             for (i, (_, meta)) in worlds.iter().enumerate() {
                 let label = format!("{} (seed: {})", meta.name, meta.seed);
-                if draw_button(ui, &label, cx, y, cursor, clicked) {
+                if button_clicked(ui, &label, cx, y, cursor, clicked) {
                     selected = Some(i);
                 }
                 y += BUTTON_H + 10.0;
@@ -70,14 +65,14 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
             }
 
             y += 20.0;
-            if draw_button(ui, "Create New World", cx, y, cursor, clicked) {
+            if button_clicked(ui, "Create New World", cx, y, cursor, clicked) {
                 *state = GameState::CreateWorld {
                     name: String::new(),
                     seed_text: String::new(),
                 };
                 return;
             }
-            if draw_button(ui, "Back", cx, y + BUTTON_H + 10.0, cursor, clicked) {
+            if button_clicked(ui, "Back", cx, y + BUTTON_H + 10.0, cursor, clicked) {
                 *state = GameState::TitleScreen;
             }
         }
@@ -108,7 +103,7 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
             y += BUTTON_H + 30.0;
 
             if !name.is_empty() {
-                if draw_button(ui, "Create & Play", cx, y, cursor, clicked) {
+                if button_clicked(ui, "Create & Play", cx, y, cursor, clicked) {
                     let seed: u32 = seed_text.parse().unwrap_or_else(|_| rand_seed());
                     match create_world(name, seed) {
                         Ok(dir) => {
@@ -128,7 +123,7 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
                 }
                 y += BUTTON_H + 10.0;
             }
-            if draw_button(ui, "Back", cx, y, cursor, clicked) {
+            if button_clicked(ui, "Back", cx, y, cursor, clicked) {
                 *state = GameState::TitleScreen;
             }
         }

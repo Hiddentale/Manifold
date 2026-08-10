@@ -5,10 +5,10 @@ use crate::{
         input::InputState,
         vulkan_object::{VulkanApplication, WORLD_DISTANCE},
     },
-    menu::draw_menu,
     hud::{draw_ui, FpsCounter},
-    utils::rand_seed,
+    menu::draw_menu,
     storage::world_meta::create_world,
+    utils::rand_seed,
     voxel::player::Player,
 };
 use std::time::Instant;
@@ -37,15 +37,14 @@ pub struct EventInfo {
 }
 
 pub fn initialize_event_info(event_handler: &EventLoopWindowTarget<()>) -> anyhow::Result<EventInfo> {
-
     let user_window = WindowBuilder::new()
         .with_title("Manifold")
         .with_inner_size(LogicalSize::new(1024, 768))
-        .build(&event_handler)?;
+        .build(event_handler)?;
 
     let application = unsafe { VulkanApplication::create_vulkan_application(&user_window) }?;
-    
-    let event_info= EventInfo {
+
+    let event_info = EventInfo {
         game_state: GameState::TitleScreen,
         input: InputState::new(),
         player: Player::new(),
@@ -58,7 +57,7 @@ pub fn initialize_event_info(event_handler: &EventLoopWindowTarget<()>) -> anyho
         physics_accumulator: 0.0,
         minimized: false,
         menu_click: false,
-        destroy_application: false
+        destroy_application: false,
     };
     Ok(event_info)
 }
@@ -79,20 +78,28 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
         WindowEvent::CursorMoved { position, .. } => {
             event_info.cursor_position = [position.x as f32, position.y as f32];
         }
-        WindowEvent::KeyboardInput {event: key_event, ..} => handle_keyboard_input(key_event, current_window, event_info),
-        WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+        WindowEvent::KeyboardInput { event: key_event, .. } => handle_keyboard_input(key_event, current_window, event_info),
+        WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+            ..
+        } => {
             if event_info.game_state.is_menu() {
                 event_info.menu_click = true;
             } else {
                 event_info.input.mouse_pressed(MouseButton::Left);
             }
         }
-        WindowEvent::MouseInput {state: ElementState::Pressed, button, .. } => {
+        WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            button,
+            ..
+        } => {
             if !event_info.game_state.is_menu() {
                 event_info.input.mouse_pressed(button);
             }
         }
-        WindowEvent::RedrawRequested {} => {
+        WindowEvent::RedrawRequested  => {
             if event_info.destroy_application || event_info.minimized {
                 return Ok(());
             }
@@ -107,7 +114,14 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
                     event_info.menu_click = false;
 
                     event_info.application.ui.begin_frame();
-                    draw_menu(&mut event_info.application.ui, &mut event_info.game_state, screen_width, screen_height, event_info.cursor_position, clicked);
+                    draw_menu(
+                        &mut event_info.application.ui,
+                        &mut event_info.game_state,
+                        screen_width,
+                        screen_height,
+                        event_info.cursor_position,
+                        clicked,
+                    );
                     unsafe { event_info.application.render_menu_frame(&event_info.user_window, &eyes) }
                 }
             };
@@ -122,13 +136,10 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
 }
 
 pub fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
-    match event {
-        DeviceEvent::MouseMotion { delta: (dx, dy) } => {
-            if matches!(event_info.game_state, GameState::Playing) {
-                event_info.input.accumulate_mouse_delta(dx, dy);
-            }
+    if let DeviceEvent::MouseMotion { delta: (dx, dy) } =  event {
+        if matches!(event_info.game_state, GameState::Playing) {
+            event_info.input.accumulate_mouse_delta(dx, dy);
         }
-         _ => ()
     }
 }
 
@@ -225,35 +236,41 @@ pub fn handle_wait_event(event_info: &mut EventInfo) {
             event_info.input.apply_mouse_look(&mut event_info.player);
             event_info.physics_accumulator = (event_info.physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
             while event_info.physics_accumulator >= PHYSICS_TICK {
-                    if let Some(world) = event_info.application.world() {
-                        let local_p = world.metric.sample_metric_at_pos(event_info.player.world_position()).minkowski_exponent;
-                        event_info.input.tick_movement(&mut event_info.player, world, PHYSICS_TICK, local_p);
-                    }
-                    event_info.physics_accumulator -= PHYSICS_TICK;
+                if let Some(world) = event_info.application.world() {
+                    let local_p = world.metric.sample_metric_at_pos(event_info.player.world_position()).minkowski_exponent;
+                    event_info.input.tick_movement(&mut event_info.player, world, PHYSICS_TICK, local_p);
                 }
-                event_info.camera.sync_from_player(&event_info.player);
-                event_info.input.take_left_click();
-                event_info.input.take_right_click();
+                event_info.physics_accumulator -= PHYSICS_TICK;
             }
-            GameState::PreGenerating { .. } => {
-                unsafe { event_info.application.update_world(&event_info.camera).ok() };
-                tick_pregen(&mut event_info.game_state, &mut event_info.application, &event_info.user_window, &mut event_info.camera, &mut event_info.player);
-            }
-            GameState::EnteringWorld { .. } => {
-                if let GameState::EnteringWorld { world_dir, seed } = std::mem::replace(&mut event_info.game_state, GameState::Playing) {
-                    if let Err(e) = unsafe { event_info.application.enter_world(&world_dir, seed) } {
-                        eprintln!("Failed to enter world: {e}");
-                        event_info.game_state = GameState::TitleScreen;
-                    } else {
-                        grab_cursor(&event_info.user_window);
-                        event_info.camera = Camera::default();
-                        event_info.player = Player::new();
-                    }
-                }
-            }
-            _ => {}
+            event_info.camera.sync_from_player(&event_info.player);
+            event_info.input.take_left_click();
+            event_info.input.take_right_click();
         }
-        event_info.user_window.request_redraw();
+        GameState::PreGenerating { .. } => {
+            unsafe { event_info.application.update_world(&event_info.camera).ok() };
+            tick_pregen(
+                &mut event_info.game_state,
+                &mut event_info.application,
+                &event_info.user_window,
+                &mut event_info.camera,
+                &mut event_info.player,
+            );
+        }
+        GameState::EnteringWorld { .. } => {
+            if let GameState::EnteringWorld { world_dir, seed } = std::mem::replace(&mut event_info.game_state, GameState::Playing) {
+                if let Err(e) = unsafe { event_info.application.enter_world(&world_dir, seed) } {
+                    eprintln!("Failed to enter world: {e}");
+                    event_info.game_state = GameState::TitleScreen;
+                } else {
+                    grab_cursor(&event_info.user_window);
+                    event_info.camera = Camera::default();
+                    event_info.player = Player::new();
+                }
+            }
+        }
+        _ => {}
+    }
+    event_info.user_window.request_redraw();
 }
 
 fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, window: &winit::window::Window, camera: &mut Camera, player: &mut Player) {

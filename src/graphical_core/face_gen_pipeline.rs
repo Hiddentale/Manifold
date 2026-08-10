@@ -144,9 +144,7 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], pool:
         let visible2 = [*vk::DescriptorBufferInfo::builder()
             .buffer(pool.visible_chunks_buffer[1])
             .range(vk::WHOLE_SIZE)];
-        let faces = [*vk::DescriptorBufferInfo::builder()
-            .buffer(pool.faces_buffer[phase])
-            .range(vk::WHOLE_SIZE)];
+        let faces = [*vk::DescriptorBufferInfo::builder().buffer(pool.faces_buffer[phase]).range(vk::WHOLE_SIZE)];
         let draw_args = [*vk::DescriptorBufferInfo::builder()
             .buffer(pool.draw_args_buffer[phase])
             .range(vk::WHOLE_SIZE)];

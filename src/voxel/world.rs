@@ -80,8 +80,7 @@ impl World {
     }
 
     pub fn block_solid_at(&self, world_x: i32, world_y: i32, world_z: i32) -> bool {
-        let (chunk_pos, local_x, local_y, local_z) = 
-            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        let (chunk_pos, local_x, local_y, local_z) = convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get(&chunk_pos) {
             Some(chunk) => chunk.get_block_at(local_x, local_y, local_z).is_opaque(),
             None => false,
@@ -90,8 +89,7 @@ impl World {
 
     /// Direct cube-space block read.
     pub fn get_block_at(&self, world_x: i32, world_y: i32, world_z: i32) -> BlockType {
-        let (chunk_pos, local_x, local_y, local_z) = 
-            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        let (chunk_pos, local_x, local_y, local_z) = convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get(&chunk_pos) {
             Some(chunk) => chunk.get_block_at(local_x, local_y, local_z),
             None => BlockType::Air,
@@ -100,10 +98,9 @@ impl World {
 
     /// Direct cube-space block write.
     pub fn set_block_at(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) -> bool {
-        let (chunk_pos, local_x, local_y, local_z) = 
-            convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
+        let (chunk_pos, local_x, local_y, local_z) = convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
         match self.chunks.get_mut(&chunk_pos) {
-            Some(chunk) => { 
+            Some(chunk) => {
                 chunk.set_block_at(local_x, local_y, local_z, block);
                 true
             }
@@ -142,11 +139,9 @@ fn chunk_in_render_area(render_area: &HashSet<(i32, i32)>, chunk: ChunkPos) -> b
     render_area.contains(&(chunk.x, chunk.z))
 }
 
-fn convert_world_coordinates_to_chunk_coordinates(world_x: i32, world_y: i32, world_z: i32) -> (ChunkPos, usize, usize, usize){
-    let (chunk_pos, local_x, local_y, local_z) = world_to_chunk_local(
-           DVec3::new(world_x as f64, world_y as f64, world_z as f64)
-       );
-    return (chunk_pos, local_x, local_y, local_z)
+fn convert_world_coordinates_to_chunk_coordinates(world_x: i32, world_y: i32, world_z: i32) -> (ChunkPos, usize, usize, usize) {
+    let (chunk_pos, local_x, local_y, local_z) = world_to_chunk_local(DVec3::new(world_x as f64, world_y as f64, world_z as f64));
+    (chunk_pos, local_x, local_y, local_z)
 }
 
 #[cfg(test)]
