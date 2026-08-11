@@ -69,7 +69,7 @@ impl Player {
 
     /// Turn left/right around world-up.
     pub fn rotate_yaw(&mut self, delta: f32) {
-        self.yaw += delta;
+        self.yaw -= delta;
         self.update_look_vectors();
     }
 
@@ -96,12 +96,14 @@ impl Player {
     }
 
     pub fn apply_physics(&mut self, dt: f32, world: &World) {
-        self.velocity.y -= GRAVITY * dt;
-        if !self.can_move(0.0, self.velocity.y * dt, 0.0, world) {
-            if self.velocity.y <= 0.0 {
-                self.on_ground = true;
-            }
+        if !self.fly_mode {
+            self.velocity.y -= GRAVITY * dt;
+            if !self.can_move(0.0, self.velocity.y * dt, 0.0, world) {
+                if self.velocity.y <= 0.0 {
+                    self.on_ground = true;
+                }
             self.velocity.y = 0.0;
+            }
         }
     }
 

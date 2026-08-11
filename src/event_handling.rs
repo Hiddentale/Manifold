@@ -312,7 +312,9 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
 }
 
 fn grab_cursor(window: &winit::window::Window) {
-    let _ = window.set_cursor_grab(CursorGrabMode::Confined);
+    if window.set_cursor_grab(CursorGrabMode::Confined).is_err() {
+        let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+    }
     window.set_cursor_visible(false);
 }
 
