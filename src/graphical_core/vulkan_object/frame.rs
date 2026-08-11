@@ -322,8 +322,3 @@ impl VulkanApplication {
         Ok(())
     }
 }
-
-fn identify_solid_chunks() {
-    let mut newly_solid_chunks: Vec<ChunkPos> = Vec::new();
-    todo!()
-}

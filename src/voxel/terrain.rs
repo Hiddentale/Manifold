@@ -23,10 +23,6 @@ const HUMIDITY_SCALE: f64 = 0.001;
 const WARP_SCALE: f64 = 0.003;
 pub(crate) const WARP_STRENGTH: f64 = 80.0;
 
-const OVERHANG_SCALE: f64 = 0.04;
-const OVERHANG_STRENGTH: f64 = 1.5;
-const OVERHANG_BAND: usize = 20;
-
 const MOUNTAIN_AMPLITUDE: f64 = 25.0;
 const DETAIL_AMPLITUDE: f64 = 4.0;
 const WEIRDNESS_AMPLITUDE: f64 = 10.0;
@@ -41,9 +37,7 @@ pub(crate) struct WorldNoises {
     temperature: Fbm<Perlin>,
     humidity: Fbm<Perlin>,
     pub(crate) warp_x: Fbm<Perlin>,
-    pub(crate) warp_y: Fbm<Perlin>,
     pub(crate) warp_z: Fbm<Perlin>,
-    overhang: Perlin,
 }
 
 impl WorldNoises {
@@ -86,17 +80,11 @@ impl WorldNoises {
                 .set_octaves(3)
                 .set_persistence(0.5)
                 .set_lacunarity(2.0),
-            warp_y: Fbm::<Perlin>::new(seed + 11)
-                .set_frequency(WARP_SCALE)
-                .set_octaves(3)
-                .set_persistence(0.5)
-                .set_lacunarity(2.0),
             warp_z: Fbm::<Perlin>::new(seed + 7)
                 .set_frequency(WARP_SCALE)
                 .set_octaves(3)
                 .set_persistence(0.5)
                 .set_lacunarity(2.0),
-            overhang: Perlin::new(seed + 8),
         }
     }
 }
@@ -284,43 +272,6 @@ fn find_blocktype(
 
     if depth_from_surface > CAVE_MIN_DEPTH {
         let cave_val = noises.cave.get([world_x * CAVE_SCALE, world_y as f64 * CAVE_SCALE, world_z * CAVE_SCALE]);
-        if cave_val > CAVE_THRESHOLD {
-            return BlockType::Air;
-        }
-    }
-
-    block
-}
-
-fn sample_block(y: usize, height: usize, surface: BlockType, subsurface: BlockType, noises: &WorldNoises, wx: f64, wy: f64, wz: f64) -> BlockType {
-    if y > height && y <= SEA_LEVEL {
-        return BlockType::Water;
-    }
-    if y > height + OVERHANG_BAND {
-        return BlockType::Air;
-    }
-
-    let band_bottom = height.saturating_sub(OVERHANG_BAND);
-    let band_top = height + OVERHANG_BAND;
-    if y >= band_bottom && y <= band_top {
-        let base_density = (height as f64 - y as f64) / OVERHANG_BAND as f64;
-        let noise_val = noises.overhang.get([wx * OVERHANG_SCALE, wy * OVERHANG_SCALE, wz * OVERHANG_SCALE]);
-        let density = base_density + noise_val * (OVERHANG_STRENGTH / OVERHANG_BAND as f64);
-        if density <= 0.0 {
-            return BlockType::Air;
-        }
-    }
-
-    let block = if y >= height {
-        surface
-    } else if y + DIRT_DEPTH > height {
-        subsurface
-    } else {
-        BlockType::Stone
-    };
-
-    if y >= 1 && y + 5 <= height {
-        let cave_val = noises.cave.get([wx * CAVE_SCALE, wy * CAVE_SCALE, wz * CAVE_SCALE]);
         if cave_val > CAVE_THRESHOLD {
             return BlockType::Air;
         }

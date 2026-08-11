@@ -1,5 +1,6 @@
 use glam::Vec3;
 
+#[allow(dead_code)]
 /// Local metric parameters at a world position.
 #[derive(Copy, Clone, Debug)]
 pub struct MetricParams {
@@ -35,10 +36,12 @@ impl MetricField {
         Self { anomalies: Vec::new() }
     }
 
+    #[allow(dead_code)]
     pub fn add_anomaly(&mut self, anomaly: Anomaly) {
         self.anomalies.push(anomaly);
     }
 
+    #[allow(dead_code)]
     pub fn anomalies(&self) -> &[Anomaly] {
         &self.anomalies
     }
@@ -98,6 +101,7 @@ pub fn minkowski_distance(a: Vec3, b: Vec3, p: f32) -> f32 {
     }
 }
 
+#[allow(dead_code)]
 /// Interpolate between two p-values in reciprocal space.
 /// This keeps the blend finite even when one endpoint is Chebyshev (p=inf).
 pub fn lerp_p(a: f32, b: f32, t: f32) -> f32 {
@@ -150,8 +154,6 @@ mod tests {
         (a - b).abs() < EPSILON
     }
 
-    // --- minkowski_distance ---
-
     #[test]
     fn euclidean_distance_p2() {
         let d = minkowski_distance(Vec3::ZERO, Vec3::new(3.0, 4.0, 0.0), 2.0);
@@ -201,8 +203,6 @@ mod tests {
         assert!(d2 >= dinf, "Euclidean {d2} < Chebyshev {dinf}");
     }
 
-    // --- lerp_p ---
-
     #[test]
     fn lerp_p_at_zero_returns_first() {
         assert!(approx(lerp_p(2.0, 50.0, 0.0), 2.0));
@@ -224,8 +224,6 @@ mod tests {
         let mid = lerp_p(2.0, 1.0, 0.5);
         assert!(mid > 1.0 && mid < 2.0, "midpoint {mid} not between 1 and 2");
     }
-
-    // --- MetricField::sample ---
 
     #[test]
     fn empty_field_returns_euclidean() {
@@ -351,8 +349,6 @@ mod tests {
             prev_minkowski_exponent = params.minkowski_exponent;
         }
     }
-
-    // --- metric_speed_scale ---
 
     #[test]
     fn euclidean_metric_gives_unit_scale() {

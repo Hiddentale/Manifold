@@ -130,10 +130,6 @@ impl Player {
         self.can_move(0.0, 0.0, direction.z, world);
     }
 
-    pub fn sweep_capsule(&self, delta: Vec3, world: &World) -> bool {
-        todo!()
-    }
-
     pub fn capsule_collides(&self, world: &World) -> bool {
         let angles = [0.0, std::f32::consts::PI / 2.0, std::f32::consts::PI, 3.0 * std::f32::consts::PI / 2.0];
 
@@ -169,5 +165,5 @@ fn block_is_solid(block_x: i32, block_y: i32, block_z: i32, world: &World) -> bo
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // TODO
 }

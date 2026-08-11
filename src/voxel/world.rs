@@ -87,6 +87,7 @@ impl World {
         }
     }
 
+    #[allow(dead_code)]
     /// Direct cube-space block read.
     pub fn get_block_at(&self, world_x: i32, world_y: i32, world_z: i32) -> BlockType {
         let (chunk_pos, local_x, local_y, local_z) = convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
@@ -96,6 +97,7 @@ impl World {
         }
     }
 
+    #[allow(dead_code)]
     /// Direct cube-space block write.
     pub fn set_block_at(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) -> bool {
         let (chunk_pos, local_x, local_y, local_z) = convert_world_coordinates_to_chunk_coordinates(world_x, world_y, world_z);
@@ -106,10 +108,6 @@ impl World {
             }
             None => false,
         }
-    }
-
-    pub fn get_chunk(&self, chunk_x: i32, chunk_y: i32, chunk_z: i32) -> Option<&Chunk> {
-        self.chunks.get(&ChunkPos::new(chunk_x, chunk_y, chunk_z))
     }
 
     pub fn get_chunk_at(&self, chunk_pos: ChunkPos) -> Option<&Chunk> {
