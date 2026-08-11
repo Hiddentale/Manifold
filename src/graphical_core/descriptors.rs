@@ -2,7 +2,6 @@ use crate::graphical_core::vulkan_object::VulkanApplicationData;
 use vulkan_rust::{vk, Device};
 
 /// Defines the descriptor set layout: what resources shaders can access.
-/// Used by the sky pipeline. The mesh shader pipeline has its own layout.
 pub fn create_layout(device: &Device, data: &mut VulkanApplicationData) -> anyhow::Result<()> {
     let sampler_binding = *vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
@@ -50,9 +49,6 @@ pub fn allocate_set(device: &Device, descriptor_pool: vk::DescriptorPool, layout
 
 /// Writes actual resources (texture sampler + camera UBO) into a descriptor set.
 pub fn update_set(device: &Device, descriptor_set: vk::DescriptorSet, image_view: vk::ImageView, sampler: vk::Sampler, uniform_buffer: vk::Buffer) {
-    // Bind arrays to locals so they outlive the WriteDescriptorSet structs.
-    // The builder stores raw pointers — dereferencing (*) copies the struct but
-    // not the pointed-to data. Temporaries would dangle in release mode.
     let image_infos = [*vk::DescriptorImageInfo::builder()
         .image_view(image_view)
         .sampler(sampler)

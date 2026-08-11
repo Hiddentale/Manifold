@@ -1,24 +1,14 @@
-#![allow(dead_code)] // Wired up incrementally during vertex-pulling migration
-use crate::graphical_core::compute_cull::CullPushConstants;
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::voxel_pool::VoxelPool;
+use crate::graphical_core::{
+    compute_cull::CullPushConstants,
+    shaders::create_shader_module,
+    voxel_pool::VoxelPool
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
-/// Compute-shader replacement for `chunk_cull.task` + `voxel.mesh`'s face
-/// decision logic (see vertex_pulling_guide.md Step 3). Dispatched
-/// indirectly off the same `indirect_args_buffer[phase]` that
-/// `chunk_cull_compact.comp` already produces. Writes compact face records
-/// into `voxel_pool.faces_buffer[phase]` and reserves vertex slots by
-/// atomically bumping `vertexCount` in `voxel_pool.draw_args_buffer[phase]`,
-/// which is later consumed directly by `cmd_draw_indirect`.
 pub struct FaceGenPipeline {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
-    /// One descriptor set per phase. Differs only in bindings 5 (faces) and
-    /// 6 (draw args) — bindings 0-4 (chunk/voxel/boundary/visible-phase
-    /// data) are identical across both sets since the shader itself
-    /// branches on the `phase` push constant to pick visible_phase1 vs. 2.
     pub descriptor_sets: [vk::DescriptorSet; 2],
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,

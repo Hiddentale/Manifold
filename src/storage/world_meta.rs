@@ -1,6 +1,8 @@
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf}
+};
 
 const WORLDS_DIR: &str = "worlds";
 const META_FILE: &str = "world.toml";
@@ -84,7 +86,6 @@ fn sanitize_dir_name(name: &str) -> String {
 }
 
 fn current_timestamp() -> String {
-    // Simple timestamp without chrono dependency: seconds since UNIX epoch
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

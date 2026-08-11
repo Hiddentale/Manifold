@@ -1,12 +1,16 @@
-use crate::voxel::metric;
-use crate::voxel::player::Player;
-use crate::voxel::world::World;
+use crate::voxel::{
+    metric, 
+    player::Player, 
+    world::World
+};
 use std::collections::HashSet;
-use winit::event::MouseButton;
-use winit::keyboard::KeyCode;
+use winit::{
+    event::MouseButton, 
+    keyboard::KeyCode
+};
 
 const MOVE_SPEED: f32 = 15.0;
-const SPRINT_MULTIPLIER: f32 = 100.0;
+const SPRINT_MULTIPLIER: f32 = 10.0;
 const MOUSE_SENSITIVITY: f32 = 0.003;
 
 pub struct InputState {
@@ -63,15 +67,14 @@ impl InputState {
     }
 
     /// Mouse look — call every render frame for smoothness.
-    pub fn apply_mouse_look(&mut self, player: &mut Player) {
+    pub fn apply_camera_rotation(&mut self, player: &mut Player) {
         let (dx, dy) = self.mouse_delta;
         self.mouse_delta = (0.0, 0.0);
         player.rotate_yaw(-dx as f32 * MOUSE_SENSITIVITY);
         player.rotate_pitch(-dy as f32 * MOUSE_SENSITIVITY);
     }
 
-    /// Per-physics-tick movement step. Reads pressed keys (which is fine
-    /// because key state is event-driven and stable across the tick) and
+    /// Per-physics-tick movement step. Reads pressed keys and
     /// applies one fixed-dt move + physics integration.
     pub fn tick_movement(&self, player: &mut Player, world: &World, dt: f32, local_p: f32) {
         if player.fly_mode {
@@ -87,10 +90,6 @@ impl InputState {
         let speed = MOVE_SPEED * multiplier * delta_time;
         let front = player.forward;
         let right = player.right_vector();
-        // Camera-up: orthogonal to forward in the screen plane. Decouples
-        // E/Q from the planet's radial direction so "fly up" always means
-        // "up relative to where the camera is looking", not "away from the
-        // planet centre" (which on a side face is sideways on screen).
         let up = right.cross(front).normalize_or(player.up());
 
         let mut move_dir = glam::Vec3::ZERO;

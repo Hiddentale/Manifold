@@ -1,5 +1,7 @@
-use crate::graphical_core::gpu::SuitabilityError;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    gpu::SuitabilityError,
+    vulkan_object::VulkanApplicationData
+};
 use anyhow::anyhow;
 use vulkan_rust::{vk, Instance, VkResult};
 

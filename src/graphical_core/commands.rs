@@ -1,10 +1,12 @@
-use crate::graphical_core::compute_cull::{CullPushConstants, DepthPyramidResources, DepthReducePush};
-use crate::graphical_core::cull_compact::CullCompactPipeline;
-use crate::graphical_core::face_gen_pipeline::FaceGenPipeline;
-use crate::graphical_core::vertex_pull_pipeline::VertexPullPipeline;
-use crate::graphical_core::voxel_pool::VoxelPool;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::graphical_core::{self, MAX_FRAMES_IN_FLIGHT};
+use crate::graphical_core::{
+    self, MAX_FRAMES_IN_FLIGHT,
+    compute_cull::{CullPushConstants, DepthPyramidResources, DepthReducePush},
+    cull_compact::CullCompactPipeline,
+    face_gen_pipeline::FaceGenPipeline,
+    vertex_pull_pipeline::VertexPullPipeline,
+    voxel_pool::VoxelPool,
+    vulkan_object::VulkanApplicationData,
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
 
@@ -371,11 +373,7 @@ pub(crate) unsafe fn record_cull_compact_pass(
     );
 }
 
-/// Resets `draw_args_buffer[phase]`'s vertexCount, dispatches `face_gen.comp`
-/// indirectly off the same args `chunk_cull_compact.comp` already produced
-/// for this phase, and barriers its writes against the subsequent indirect
-/// draw (draw_args) and vertex shader read (faces). See
-/// vertex_pulling_guide.md Step 5.
+
 pub(crate) unsafe fn record_face_gen_pass(
     device: &Device,
     cmd: vk::CommandBuffer,
@@ -389,8 +387,6 @@ pub(crate) unsafe fn record_face_gen_pass(
     let draw_args_buf = voxel_pool.draw_args_buffer[phase_idx];
     let faces_buf = voxel_pool.faces_buffer[phase_idx];
 
-    // Clear vertexCount only (offset 0, 4 bytes); instanceCount/firstVertex/
-    // firstInstance stay at their init values.
     device.cmd_fill_buffer(cmd, draw_args_buf, 0, 4, 0);
     let fill_barrier = *vk::BufferMemoryBarrier::builder()
         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
@@ -421,15 +417,8 @@ pub(crate) unsafe fn record_face_gen_pass(
     let push_bytes: &[u8] = std::slice::from_raw_parts(&push as *const CullPushConstants as *const u8, std::mem::size_of::<CullPushConstants>());
     device.cmd_push_constants(cmd, face_gen.pipeline_layout, vk::ShaderStageFlags::COMPUTE, 0, push_bytes);
 
-    // Same indirect args `chunk_cull_compact.comp` already produced for this
-    // phase this frame — VkDispatchIndirectCommand is byte-identical to the
-    // VkDrawMeshTasksIndirectCommandEXT layout stored there, and
-    // record_cull_compact_pass's trailing barrier already covers the
-    // DRAW_INDIRECT-stage read this dispatch performs.
     device.cmd_dispatch_indirect(cmd, dispatch_args_buf, 0);
 
-    // Barrier: face_gen writes -> draw_args consumed as indirect draw args,
-    // faces consumed by the vertex shader.
     let draw_args_after = *vk::BufferMemoryBarrier::builder()
         .src_access_mask(vk::AccessFlags::SHADER_WRITE)
         .dst_access_mask(vk::AccessFlags::INDIRECT_COMMAND_READ)

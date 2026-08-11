@@ -1,5 +1,7 @@
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    shaders::create_shader_module,
+    vulkan_object::VulkanApplicationData
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 

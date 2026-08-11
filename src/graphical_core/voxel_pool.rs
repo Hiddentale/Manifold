@@ -1,8 +1,14 @@
-use crate::graphical_core::buffers::allocate_buffer;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::voxel::chunk::{Chunk, CHUNK_SIZE};
-use crate::voxel::grid::{chunk_world_aabb, ChunkPos};
-use crate::voxel::world::World;
+use crate::{
+    graphical_core::{
+        buffers::allocate_buffer,
+        vulkan_object::VulkanApplicationData
+    },
+    voxel::{
+        chunk::{Chunk, CHUNK_SIZE},
+        grid::{chunk_world_aabb, ChunkPos},
+        world::World
+    }
+};
 use std::{
     collections::HashMap,
     ptr::{copy_nonoverlapping, read, write, write_bytes},

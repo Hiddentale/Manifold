@@ -1,7 +1,9 @@
-use crate::graphical_core::camera::UniformBufferObject;
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::voxel_pool::VoxelPool;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    camera::UniformBufferObject,
+    shaders::create_shader_module,
+    voxel_pool::VoxelPool,
+    vulkan_object::VulkanApplicationData
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 

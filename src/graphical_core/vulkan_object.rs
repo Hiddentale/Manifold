@@ -2,10 +2,12 @@ mod frame;
 mod lifecycle;
 mod presentation;
 
-use crate::graphical_core::camera::UniformBufferObject;
-use crate::graphical_core::compute_cull::DepthPyramidResources;
-use crate::graphical_core::ui_pipeline::UiPipeline;
-use crate::graphical_core::voxel_pool::VoxelPool;
+use crate::graphical_core::{
+    camera::UniformBufferObject,
+    compute_cull::DepthPyramidResources,
+    ui_pipeline::UiPipeline,
+    voxel_pool::VoxelPool
+};
 use crate::voxel::world::World;
 use vulkan_rust::{vk, Device, Entry, Instance};
 

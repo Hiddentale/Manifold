@@ -4,7 +4,7 @@ fn main() -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
 
     if !is_glsl_compiler_available() {
-        println!("cargo:warning=glslc not found — skipping shader compilation. Using pre-compiled .spv files.");
+        println!("cargo:warning=glslc not found, skipping shader compilation. Using pre-compiled .spv files.");
         return Ok(());
     }
 
@@ -55,7 +55,6 @@ fn process_shaders(shader_paths: Vec<PathBuf>) -> anyhow::Result<()> {
         };
         if needs_recompile {
             let mut cmd = std::process::Command::new("glslc");
-            // Mesh/task shaders require Vulkan 1.2+ target environment
             if let Some(ext) = shader_path.extension() {
                 if ext == "task" || ext == "mesh" {
                     cmd.arg("--target-env=vulkan1.2");

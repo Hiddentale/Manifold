@@ -1,8 +1,9 @@
-use crate::graphical_core::depth::depth_format;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    depth::DEPTH_FORMAT,
+    vulkan_object::VulkanApplicationData
+};
 use vulkan_rust::{vk, Device, Instance};
 
-/// Creates both render passes: one that clears (phase 1) and one that loads (phase 2).
 pub unsafe fn create_render_pass(_instance: &Instance, device: &Device, data: &mut VulkanApplicationData) -> anyhow::Result<()> {
     data.render_pass = create_multiview_render_pass(
         device,
@@ -54,7 +55,7 @@ pub unsafe fn create_multiview_render_pass(
         .final_layout(final_color_layout);
 
     let depth_attachment = vk::AttachmentDescription::builder()
-        .format(depth_format())
+        .format(DEPTH_FORMAT)
         .samples(vk::SampleCountFlags::_1)
         .load_op(load_op)
         .store_op(vk::AttachmentStoreOp::STORE)

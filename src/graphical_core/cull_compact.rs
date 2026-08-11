@@ -1,25 +1,16 @@
-use crate::graphical_core::camera::UniformBufferObject;
-use crate::graphical_core::compute_cull::CullPushConstants;
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::voxel_pool::VoxelPool;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    camera::UniformBufferObject,
+    compute_cull::CullPushConstants,
+    shaders::create_shader_module,
+    voxel_pool::VoxelPool,
+    vulkan_object::VulkanApplicationData
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
-/// GPU compaction + indirect mesh task dispatch (Niagara-style).
-///
-/// Runs `chunk_cull_compact.comp` once per phase, atomically appending the
-/// indices of surviving chunks to `voxel_pool.visible_chunks_buffer[phase]`
-/// and writing the visible count into `voxel_pool.indirect_args_buffer[phase]`
-/// at offset 0 (the `groupCountX` field of `VkDrawMeshTasksIndirectCommandEXT`).
-/// The indirect args buffer is then bound directly to
-/// `cmd_draw_mesh_tasks_indirect_ext`, so the host never has to know how many
-/// chunks survived the cull.
 pub struct CullCompactPipeline {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
-    /// One descriptor set per phase. Differs only in bindings 2 (visible
-    /// chunks) and 3 (indirect args).
     pub descriptor_sets: [vk::DescriptorSet; 2],
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
@@ -61,7 +52,6 @@ impl CullCompactPipeline {
         })
     }
 
-    /// Re-write the depth pyramid descriptor on both sets after swapchain recreation.
     pub unsafe fn update_depth_pyramid(&self, device: &Device, data: &VulkanApplicationData) {
         let depth_info = [*vk::DescriptorImageInfo::builder()
             .image_view(data.depth_pyramid_full_view)

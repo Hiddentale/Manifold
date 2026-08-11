@@ -1,4 +1,7 @@
-use crate::graphical_core::{memory::find_memory_type, vulkan_object::VulkanApplicationData};
+use crate::graphical_core::{
+    memory::find_memory_type, 
+    vulkan_object::VulkanApplicationData
+};
 use std::ptr::copy_nonoverlapping;
 use vulkan_rust::{vk, Device, Instance};
 

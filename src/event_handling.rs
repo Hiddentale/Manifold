@@ -233,7 +233,7 @@ pub fn handle_wait_event(event_info: &mut EventInfo) {
     event_info.fps_counter.tick(delta_time);
     match &mut event_info.game_state {
         GameState::Playing => {
-            event_info.input.apply_mouse_look(&mut event_info.player);
+            event_info.input.apply_camera_rotation(&mut event_info.player);
             event_info.physics_accumulator = (event_info.physics_accumulator + delta_time).min(MAX_PHYSICS_CATCHUP);
             while event_info.physics_accumulator >= PHYSICS_TICK {
                 if let Some(world) = event_info.application.world() {

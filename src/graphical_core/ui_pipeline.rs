@@ -1,7 +1,9 @@
-use crate::graphical_core::buffers::allocate_buffer;
-use crate::graphical_core::memory::find_memory_type;
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    buffers::allocate_buffer,
+    memory::find_memory_type,
+    shaders::create_shader_module,
+    vulkan_object::VulkanApplicationData
+};
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
 

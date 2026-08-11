@@ -1,13 +1,10 @@
-use crate::graphical_core::memory::find_memory_type;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{
+    memory::find_memory_type,
+    vulkan_object::VulkanApplicationData
+};
 use vulkan_rust::{vk, Device, Instance};
 
-const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
-
-/// Returns the depth buffer format used across the pipeline.
-pub fn depth_format() -> vk::Format {
-    DEPTH_FORMAT
-}
+pub const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 
 /// Creates a depth image, allocates device memory, and creates its image view.
 pub unsafe fn create_depth_image(device: &Device, instance: &Instance, data: &mut VulkanApplicationData) -> anyhow::Result<()> {
