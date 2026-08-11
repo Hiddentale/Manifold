@@ -35,61 +35,39 @@ pub struct GpuMeshChunkInfo {
 /// Manages GPU SSBOs for raw voxel data, boundary slices, and chunk info.
 /// Uses slot-based allocation so chunks can be added/removed without rebuilding.
 pub struct VoxelPool {
-    // Voxel data SSBO
     pub voxel_buffer: vk::Buffer,
     voxel_memory: vk::DeviceMemory,
     voxel_ptr: *mut u8,
 
-    // Boundary data SSBO
     pub boundary_buffer: vk::Buffer,
     boundary_memory: vk::DeviceMemory,
     boundary_ptr: *mut u8,
 
-    // Chunk info SSBO
     pub chunk_info_buffer: vk::Buffer,
     chunk_info_memory: vk::DeviceMemory,
     chunk_info_ptr: *mut GpuMeshChunkInfo,
 
-    // Visibility SSBO
     pub visibility_buffer: vk::Buffer,
     visibility_memory: vk::DeviceMemory,
     visibility_ptr: *mut u32,
 
-    // Per-phase visible chunk index list (filled by `chunk_cull_compact.comp`,
-    // read by the task shader as `visible_phaseN[gl_WorkGroupID.x]`).
     pub visible_chunks_buffer: [vk::Buffer; 2],
     visible_chunks_memory: [vk::DeviceMemory; 2],
 
-    // Per-phase indirect args buffer. Layout matches
-    // `VkDrawMeshTasksIndirectCommandEXT { groupCountX, Y, Z }`.
-    // Y and Z are pre-initialised to 1 at allocation; only X is touched per
-    // frame (cleared to 0 by cmd_fill_buffer, atomically incremented by the
-    // cull compact pass). The same buffer is bound as a storage SSBO to the
-    // compute pass and as INDIRECT_BUFFER to the mesh draw call.
     pub indirect_args_buffer: [vk::Buffer; 2],
     indirect_args_memory: [vk::DeviceMemory; 2],
 
-    // Per-phase compact face records written by `face_gen.comp`, read by
-    // `voxel_pull.vert` via `gl_VertexIndex / 6`. See vertex_pulling_guide.md
-    // Step 2.
     pub faces_buffer: [vk::Buffer; 2],
     faces_memory: [vk::DeviceMemory; 2],
 
-    // Per-phase indirect draw args for the vertex-pull draw call. Layout
-    // matches `VkDrawIndirectCommand { vertexCount, instanceCount,
-    // firstVertex, firstInstance }`. instanceCount/firstVertex/firstInstance
-    // are pre-initialised once (1, 0, 0); only vertexCount is reset per
-    // frame and atomically incremented by `face_gen.comp`.
     pub draw_args_buffer: [vk::Buffer; 2],
     draw_args_memory: [vk::DeviceMemory; 2],
 
-    // Slot management
     free_slots: Vec<u32>,
     next_slot: u32,
     max_slots: u32,
     chunk_slots: HashMap<ChunkPos, u32>,
 
-    // Chunk info is packed contiguously for GPU dispatch
     chunk_info_count: u32,
     slot_to_info_index: HashMap<u32, u32>,
     info_index_to_slot: Vec<u32>,

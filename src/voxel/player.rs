@@ -50,9 +50,11 @@ impl Player {
         Vec3::new(self.x, self.y, self.z)
     }
 
+  
     /// Cartesian eye position.
     pub fn camera_position(&self) -> Vec3 {
-        self.world_position() + self.forward * CAMERA_FORWARD_OFFSET
+        const EYE_HEIGHT: f32 = 1.6; // Make this depend on height in future
+        self.world_position() + Vec3::new(0.0, EYE_HEIGHT, 0.0) + self.forward * CAMERA_FORWARD_OFFSET
     }
 
     /// Cartesian right direction relative to player.
@@ -95,10 +97,11 @@ impl Player {
 
     pub fn apply_physics(&mut self, dt: f32, world: &World) {
         self.velocity.y -= GRAVITY * dt;
-        // Might have issue here where if we jump and hit a ceiling, can_move will give us false?
         if !self.can_move(0.0, self.velocity.y * dt, 0.0, world) {
+            if self.velocity.y <= 0.0 {
+                self.on_ground = true;
+            }
             self.velocity.y = 0.0;
-            self.on_ground = true;
         }
     }
 
@@ -131,14 +134,21 @@ impl Player {
     }
 
     pub fn capsule_collides(&self, world: &World) -> bool {
-        let angles = [0.0, std::f32::consts::PI / 2.0, std::f32::consts::PI, 3.0 * std::f32::consts::PI / 2.0];
+        let offsets = [
+            (-self.half_width, -self.half_width),
+            (-self.half_width, self.half_width),
+            (self.half_width, -self.half_width),
+            (self.half_width, self.half_width),
+        ];
 
         for y_offset in [0.0, 0.85, self.height] {
-            for &angle in &angles {
-                let dx = (angle.cos() * self.half_width).round() as i32;
-                let dz = (angle.sin() * self.half_width).round() as i32;
-
-                if block_is_solid(self.x as i32 + dx, (self.y + y_offset) as i32, self.z as i32 + dz, world) {
+            for &(dx, dz) in &offsets {
+                if block_is_solid(
+                    (self.x + dx).floor() as i32,
+                    (self.y + y_offset).floor() as i32,
+                    (self.z + dz).floor() as i32,
+                    world,
+                ) {
                     return true;
                 }
             }
