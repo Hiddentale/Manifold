@@ -99,7 +99,7 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
                 event_info.input.mouse_pressed(button);
             }
         }
-        WindowEvent::RedrawRequested  => {
+        WindowEvent::RedrawRequested => {
             if event_info.destroy_application || event_info.minimized {
                 return Ok(());
             }
@@ -136,7 +136,7 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
 }
 
 pub fn handle_device_event(event: DeviceEvent, event_info: &mut EventInfo) {
-    if let DeviceEvent::MouseMotion { delta: (dx, dy) } =  event {
+    if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
         if matches!(event_info.game_state, GameState::Playing) {
             event_info.input.accumulate_mouse_delta(dx, dy);
         }

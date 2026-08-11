@@ -50,7 +50,6 @@ impl Player {
         Vec3::new(self.x, self.y, self.z)
     }
 
-  
     /// Cartesian eye position.
     pub fn camera_position(&self) -> Vec3 {
         const EYE_HEIGHT: f32 = 1.6; // Make this depend on height in future
@@ -102,7 +101,7 @@ impl Player {
                 if self.velocity.y <= 0.0 {
                     self.on_ground = true;
                 }
-            self.velocity.y = 0.0;
+                self.velocity.y = 0.0;
             }
         }
     }

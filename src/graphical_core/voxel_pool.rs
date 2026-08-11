@@ -1,9 +1,12 @@
 use crate::graphical_core::buffers::allocate_buffer;
 use crate::graphical_core::vulkan_object::VulkanApplicationData;
 use crate::voxel::chunk::{Chunk, CHUNK_SIZE};
-use crate::voxel::grid::{ChunkPos, chunk_world_aabb};
+use crate::voxel::grid::{chunk_world_aabb, ChunkPos};
 use crate::voxel::world::World;
-use std::{collections::HashMap, ptr::copy_nonoverlapping};
+use std::{
+    collections::HashMap,
+    ptr::{copy_nonoverlapping, read, write, write_bytes},
+};
 use vulkan_rust::{vk, Device, Instance};
 
 const BYTES_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
@@ -63,8 +66,8 @@ pub struct VoxelPool {
     chunk_pool_indices: HashMap<ChunkPos, u32>,
 
     chunk_info_count: u32,
-    slot_to_info_index: HashMap<u32, u32>,
-    info_index_to_slot: Vec<u32>,
+    pool_index_to_info_index: HashMap<u32, u32>,
+    info_index_to_pool_index: Vec<u32>,
 }
 
 impl VoxelPool {
@@ -89,7 +92,7 @@ impl VoxelPool {
             allocate_buffer::<u32>(visibility_size, ssbo_flags, device, instance, data, host_visible)?;
 
         // Zero visibility buffer
-        std::ptr::write_bytes(visibility_ptr, 0, max_pool_indices as usize);
+        write_bytes(visibility_ptr, 0, max_pool_indices as usize);
 
         // Per-phase visible chunk lists (one u32 per max_slot).
         let visible_size = (max_pool_indices as u64) * 4;
@@ -104,8 +107,8 @@ impl VoxelPool {
         let (a0_buf, a0_mem, a0_ptr) = allocate_buffer::<u32>(args_size, indirect_flags, device, instance, data, host_visible)?;
         let (a1_buf, a1_mem, a1_ptr) = allocate_buffer::<u32>(args_size, indirect_flags, device, instance, data, host_visible)?;
         let init_args = [0u32, 1u32, 1u32];
-        std::ptr::copy_nonoverlapping(init_args.as_ptr(), a0_ptr, 3);
-        std::ptr::copy_nonoverlapping(init_args.as_ptr(), a1_ptr, 3);
+        copy_nonoverlapping(init_args.as_ptr(), a0_ptr, 3);
+        copy_nonoverlapping(init_args.as_ptr(), a1_ptr, 3);
 
         // Per-phase faces SSBO (MAX_FACES * 8 bytes each).
         let faces_size = MAX_FACES * FACE_RECORD_BYTES;
@@ -118,8 +121,8 @@ impl VoxelPool {
         let (d0_buf, d0_mem, d0_ptr) = allocate_buffer::<u32>(DRAW_ARGS_BYTES, indirect_flags, device, instance, data, host_visible)?;
         let (d1_buf, d1_mem, d1_ptr) = allocate_buffer::<u32>(DRAW_ARGS_BYTES, indirect_flags, device, instance, data, host_visible)?;
         let init_draw_args = [0u32, 1u32, 0u32, 0u32];
-        std::ptr::copy_nonoverlapping(init_draw_args.as_ptr(), d0_ptr, 4);
-        std::ptr::copy_nonoverlapping(init_draw_args.as_ptr(), d1_ptr, 4);
+        copy_nonoverlapping(init_draw_args.as_ptr(), d0_ptr, 4);
+        copy_nonoverlapping(init_draw_args.as_ptr(), d1_ptr, 4);
 
         Ok(Self {
             voxel_buffer,
@@ -147,8 +150,8 @@ impl VoxelPool {
             max_pool_indices,
             chunk_pool_indices: HashMap::new(),
             chunk_info_count: 0,
-            slot_to_info_index: HashMap::new(),
-            info_index_to_slot: Vec::new(),
+            pool_index_to_info_index: HashMap::new(),
+            info_index_to_pool_index: Vec::new(),
         })
     }
 
@@ -172,55 +175,55 @@ impl VoxelPool {
             chunk_pos: [pos.x, pos.y, pos.z],
         };
         let info_index = self.chunk_info_count;
-        std::ptr::write(self.chunk_info_ptr.add(info_index as usize), info);
-        self.slot_to_info_index.insert(pool_index, info_index);
-        self.info_index_to_slot.push(pool_index);
+        write(self.chunk_info_ptr.add(info_index as usize), info);
+        self.pool_index_to_info_index.insert(pool_index, info_index);
+        self.info_index_to_pool_index.push(pool_index);
         self.chunk_info_count += 1;
     }
 
     /// Removes a chunk from the pool, returning its slot for reuse.
-    pub unsafe fn remove_chunk(&mut self, pos: &ChunkPos) {
-        let slot = match self.chunk_pool_indices.remove(pos) {
+    pub unsafe fn remove_chunk(&mut self, chunk_pos: &ChunkPos) {
+        let pool_index = match self.chunk_pool_indices.remove(chunk_pos) {
             Some(s) => s,
             None => return,
         };
-        self.free_pool_indices.push(slot);
+        self.free_pool_indices.push(pool_index);
 
         // Swap-remove from chunk info array
-        if let Some(&info_index) = self.slot_to_info_index.get(&slot) {
+        if let Some(&info_index) = self.pool_index_to_info_index.get(&pool_index) {
             let last_index = self.chunk_info_count - 1;
             if info_index != last_index {
-                // Copy last entry into the removed slot
-                let last_info = std::ptr::read(self.chunk_info_ptr.add(last_index as usize));
-                std::ptr::write(self.chunk_info_ptr.add(info_index as usize), last_info);
+                // Copy last entry into the removed pool index
+                let last_info = read(self.chunk_info_ptr.add(last_index as usize));
+                write(self.chunk_info_ptr.add(info_index as usize), last_info);
 
                 // Update tracking for the moved entry
-                let moved_slot = self.info_index_to_slot[last_index as usize];
-                self.slot_to_info_index.insert(moved_slot, info_index);
-                self.info_index_to_slot[info_index as usize] = moved_slot;
+                let moved_index = self.info_index_to_pool_index[last_index as usize];
+                self.pool_index_to_info_index.insert(moved_index, info_index);
+                self.info_index_to_pool_index[info_index as usize] = moved_index;
             }
-            self.slot_to_info_index.remove(&slot);
-            self.info_index_to_slot.pop();
+            self.pool_index_to_info_index.remove(&pool_index);
+            self.info_index_to_pool_index.pop();
             self.chunk_info_count -= 1;
 
             // Reset visibility for the swapped index
-            std::ptr::write(self.visibility_ptr.add(info_index as usize), 0);
+            write(self.visibility_ptr.add(info_index as usize), 0);
         }
     }
 
     /// Updates boundary data for a chunk's neighbors (call when a chunk is loaded/unloaded).
-    pub unsafe fn invalidate_neighbor_boundaries(&mut self, pos: ChunkPos, world: &World) {
+    pub unsafe fn invalidate_neighbor_boundaries(&mut self, chunk_pos: ChunkPos, world: &World) {
         let neighbors = [
-            pos.offset(1, 0, 0),
-            pos.offset(-1, 0, 0),
-            pos.offset(0, 1, 0),
-            pos.offset(0, -1, 0),
-            pos.offset(0, 0, 1),
-            pos.offset(0, 0, -1),
+            chunk_pos.offset(1, 0, 0),
+            chunk_pos.offset(-1, 0, 0),
+            chunk_pos.offset(0, 1, 0),
+            chunk_pos.offset(0, -1, 0),
+            chunk_pos.offset(0, 0, 1),
+            chunk_pos.offset(0, 0, -1),
         ];
         for neighbor_pos in neighbors {
-            if let Some(&slot) = self.chunk_pool_indices.get(&neighbor_pos) {
-                self.write_boundary(slot, neighbor_pos, world);
+            if let Some(&index) = self.chunk_pool_indices.get(&neighbor_pos) {
+                self.write_boundary(index, neighbor_pos, world);
             }
         }
     }
@@ -280,20 +283,26 @@ impl VoxelPool {
         pool_index
     }
 
-    unsafe fn write_boundary(&self, slot: u32, pos: ChunkPos, world: &World) {
-        let base = slot as usize * TOTAL_BYTES_CHUNK_SIDES;
+    unsafe fn write_boundary(&self, pool_index: u32, chunk_pos: ChunkPos, world: &World) {
+        let base = pool_index as usize * TOTAL_BYTES_CHUNK_SIDES;
 
-        self.write_boundary_face(base, 0, world.get_chunk_at(pos.offset(1, 0, 0)), |c, u, v| c.get_block_at(0, v, u));
-        self.write_boundary_face(base, 1, world.get_chunk_at(pos.offset(-1, 0, 0)), |c, u, v| {
-            c.get_block_at(CHUNK_SIZE - 1, v, u)
+        self.write_boundary_face(base, 0, world.get_chunk_at(chunk_pos.offset(1, 0, 0)), |chunk, u, v| {
+            chunk.get_block_at(0, v, u)
         });
-        self.write_boundary_face(base, 2, world.get_chunk_at(pos.offset(0, 1, 0)), |c, u, v| c.get_block_at(u, 0, v));
-        self.write_boundary_face(base, 3, world.get_chunk_at(pos.offset(0, -1, 0)), |c, u, v| {
-            c.get_block_at(u, CHUNK_SIZE - 1, v)
+        self.write_boundary_face(base, 1, world.get_chunk_at(chunk_pos.offset(-1, 0, 0)), |chunk, u, v| {
+            chunk.get_block_at(CHUNK_SIZE - 1, v, u)
         });
-        self.write_boundary_face(base, 4, world.get_chunk_at(pos.offset(0, 0, 1)), |c, u, v| c.get_block_at(u, v, 0));
-        self.write_boundary_face(base, 5, world.get_chunk_at(pos.offset(0, 0, -1)), |c, u, v| {
-            c.get_block_at(u, v, CHUNK_SIZE - 1)
+        self.write_boundary_face(base, 2, world.get_chunk_at(chunk_pos.offset(0, 1, 0)), |chunk, u, v| {
+            chunk.get_block_at(u, 0, v)
+        });
+        self.write_boundary_face(base, 3, world.get_chunk_at(chunk_pos.offset(0, -1, 0)), |chunk, u, v| {
+            chunk.get_block_at(u, CHUNK_SIZE - 1, v)
+        });
+        self.write_boundary_face(base, 4, world.get_chunk_at(chunk_pos.offset(0, 0, 1)), |chunk, u, v| {
+            chunk.get_block_at(u, v, 0)
+        });
+        self.write_boundary_face(base, 5, world.get_chunk_at(chunk_pos.offset(0, 0, -1)), |chunk, u, v| {
+            chunk.get_block_at(u, v, CHUNK_SIZE - 1)
         });
     }
 
@@ -316,7 +325,7 @@ impl VoxelPool {
             }
             None => {
                 // No neighbor loaded — fill with Air (0) so boundary faces are emitted
-                std::ptr::write_bytes(self.boundary_ptr.add(offset), 0, TOTAL_BYTES_CHUNK_SIDES);
+                write_bytes(self.boundary_ptr.add(offset), 0, TOTAL_BYTES_CHUNK_SIDES);
             }
         }
     }

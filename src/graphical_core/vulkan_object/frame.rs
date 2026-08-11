@@ -10,7 +10,7 @@ use crate::graphical_core::{
 };
 use crate::voxel::chunk::CHUNK_SIZE;
 use crate::voxel::grid::ChunkPos;
-use crate::voxel::world::{TERRAIN_MAX_CY, TERRAIN_MIN_CY, World};
+use crate::voxel::world::{World, TERRAIN_MAX_CY, TERRAIN_MIN_CY};
 use vulkan_rust::vk;
 use winit::window::Window;
 
@@ -18,9 +18,7 @@ fn neighbors_all_completely_solid(world: &World, chunk_pos: ChunkPos) -> bool {
     let neighbor_solid = |neighbor_pos: ChunkPos| -> bool {
         match world.get_chunk_at(neighbor_pos) {
             Some(chunk) => chunk.contains_no_air(),
-            None => {
-                (TERRAIN_MIN_CY..=TERRAIN_MAX_CY).contains(&neighbor_pos.y)
-            }
+            None => (TERRAIN_MIN_CY..=TERRAIN_MAX_CY).contains(&neighbor_pos.y),
         }
     };
     let neighbors = [
@@ -35,9 +33,9 @@ fn neighbors_all_completely_solid(world: &World, chunk_pos: ChunkPos) -> bool {
 }
 
 impl VulkanApplication {
-    /// Acquires a swapchain image, submits the command buffer, and presents the result. 
+    /// Acquires a swapchain image, submits the command buffer, and presents the result.
     /// Also keeps check of performance of every specific step in the rendering.
-    /// 
+    ///
     /// # Safety
     /// Calls unsafe Vulkan queue and synchronization APIs.
     pub unsafe fn render_frame(&mut self, window: &Window, camera: &Camera, eyes: &EyeMatrices) -> anyhow::Result<()> {
@@ -264,7 +262,9 @@ impl VulkanApplication {
         let changed_chunks = world_resources.world.update(player_position, WORLD_DISTANCE);
 
         for chunk_pos in &changed_chunks.unloaded_chunks {
-            world_resources.voxel_pool.invalidate_neighbor_boundaries(*chunk_pos, &world_resources.world);
+            world_resources
+                .voxel_pool
+                .invalidate_neighbor_boundaries(*chunk_pos, &world_resources.world);
             world_resources.voxel_pool.remove_chunk(chunk_pos);
         }
         let mut newly_solid_chunks: Vec<ChunkPos> = Vec::new();
@@ -314,7 +314,9 @@ impl VulkanApplication {
             }
         }
         for chunk_pos in to_evict {
-            world_resources.voxel_pool.invalidate_neighbor_boundaries(chunk_pos, &world_resources.world);
+            world_resources
+                .voxel_pool
+                .invalidate_neighbor_boundaries(chunk_pos, &world_resources.world);
             world_resources.voxel_pool.remove_chunk(&chunk_pos);
         }
 

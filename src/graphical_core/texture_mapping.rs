@@ -5,7 +5,6 @@ use vulkan_rust::{vk, Device, Instance};
 const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
 const BYTES_PER_PIXEL: u32 = 4;
 
-/// Atlas dimensions: each layer is 32x16 (left half = side, right half = top).
 const ATLAS_WIDTH: u32 = 32;
 const ATLAS_HEIGHT: u32 = 16;
 
@@ -20,10 +19,9 @@ const MIP_LEVELS: u32 = {
     levels
 };
 
-/// Block textures in material_id order. None means no texture (use palette color).
 const TEXTURE_FILES: &[Option<&str>] = &[
     None,               // 0: Air
-    Some("grass.png"),  // 1: Grass (32x16 atlas: side + top)
+    Some("grass.png"),  // 1: Grass
     Some("dirt.png"),   // 2: Dirt
     Some("stone.png"),  // 3: Stone
     Some("water.png"),  // 4: Water
@@ -38,7 +36,6 @@ fn get_texture_path(texture_name: &str) -> String {
 }
 
 /// Loads all block textures into a 2D array image (one layer per material).
-/// Layers without textures are filled with white (shader uses palette color instead).
 pub fn create_texture_image(
     device: &Device,
     instance: &Instance,

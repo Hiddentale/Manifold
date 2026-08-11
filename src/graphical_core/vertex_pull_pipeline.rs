@@ -1,4 +1,3 @@
-#![allow(dead_code)] // Wired up incrementally during vertex-pulling migration
 use crate::graphical_core::camera::UniformBufferObject;
 use crate::graphical_core::shaders::create_shader_module;
 use crate::graphical_core::voxel_pool::VoxelPool;
@@ -6,18 +5,9 @@ use crate::graphical_core::vulkan_object::VulkanApplicationData;
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
-/// Graphics-pipeline replacement for the `chunk_cull.task` + `voxel.mesh`
-/// draw path. Two ordinary stages (vertex, fragment) instead of three
-/// (task, mesh, fragment); no vertex/index buffer is ever bound — the
-/// vertex shader pulls everything it needs from `voxel_pool.faces_buffer`
-/// via `gl_VertexIndex`. See vertex_pulling_guide.md Step 9.
 pub struct VertexPullPipeline {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
-    /// One descriptor set per phase. Differs only in binding 3 (faces) —
-    /// each phase reads its own `faces_buffer[phase]`. Binding 4
-    /// (ChunkInfoBuffer) is the same underlying buffer for both, since
-    /// chunk info isn't phase-specific.
     pub descriptor_sets: [vk::DescriptorSet; 2],
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
@@ -165,7 +155,6 @@ unsafe fn create_graphics_pipeline(
         .module(frag_module)
         .name(c"main");
 
-    // Pulling from an SSBO, not a vertex buffer — nothing to describe here.
     let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder();
     let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
@@ -183,7 +172,6 @@ unsafe fn create_graphics_pipeline(
     let rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
         .polygon_mode(vk::PolygonMode::FILL)
         .line_width(1.0)
-        // Same flat-world CW winding voxel.mesh already emits.
         .cull_mode(vk::CullModeFlags::BACK)
         .front_face(vk::FrontFace::CLOCKWISE);
 

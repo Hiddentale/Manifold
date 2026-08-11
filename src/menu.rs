@@ -131,7 +131,13 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, screen_width: f32, 
         GameState::PreGenerating { loaded, total, .. } => {
             let title = if *loaded >= *total { "Finishing up..." } else { "Generating terrain..." };
             let text_width = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
-            ui.draw_text(title, (screen_width - text_width) / 2.0, screen_height * 0.35, TEXT_SIZE * 1.5, TEXT_COLOR);
+            ui.draw_text(
+                title,
+                (screen_width - text_width) / 2.0,
+                screen_height * 0.35,
+                TEXT_SIZE * 1.5,
+                TEXT_COLOR,
+            );
 
             let bar_w = 400.0;
             let bar_h = 30.0;
@@ -143,7 +149,13 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, screen_width: f32, 
 
             let progress_counter = format!("{}%", (progress * 100.0).min(100.0) as u32);
             let progress_counter_width = UiPipeline::text_width(&progress_counter, TEXT_SIZE);
-            ui.draw_text(&progress_counter, (screen_width - progress_counter_width) / 2.0, by + 5.0, TEXT_SIZE, TEXT_COLOR);
+            ui.draw_text(
+                &progress_counter,
+                (screen_width - progress_counter_width) / 2.0,
+                by + 5.0,
+                TEXT_SIZE,
+                TEXT_COLOR,
+            );
         }
         GameState::EnteringWorld { .. } | GameState::Playing => {}
     }

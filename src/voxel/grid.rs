@@ -3,8 +3,6 @@
 use super::chunk::CHUNK_SIZE;
 use glam::DVec3;
 
-
-
 /// The position of a Chunk in the Z^3 lattice, coordinates
 /// are the corner of the Chunk where all three coordinates are simultaneously smallest.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -18,7 +16,7 @@ impl ChunkPos {
     pub const fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
     }
-    
+
     /// Chunk offset by an integer step on each axis.
     pub const fn offset(self, dx: i32, dy: i32, dz: i32) -> Self {
         Self {
