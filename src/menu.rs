@@ -24,28 +24,29 @@ fn button_clicked(ui: &mut UiPipeline, label: &str, x: f32, y: f32, cursor: [f32
     hovered && clicked
 }
 
-pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, cursor: [f32; 2], clicked: bool) {
+/// Draw the start menu of the game.
+pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, screen_width: f32, screen_height: f32, cursor: [f32; 2], clicked: bool) {
     const TITLE_SIZE: f32 = 48.0;
     match state {
         GameState::TitleScreen => {
             let title = "MANIFOLD";
-            let tw = UiPipeline::text_width(title, TITLE_SIZE);
-            ui.draw_text(title, (sw - tw) / 2.0, sh * 0.2, TITLE_SIZE, TEXT_COLOR);
+            let text_width = UiPipeline::text_width(title, TITLE_SIZE);
+            ui.draw_text(title, (screen_width - text_width) / 2.0, screen_height * 0.2, TITLE_SIZE, TEXT_COLOR);
 
-            let cx = (sw - BUTTON_W) / 2.0;
-            if button_clicked(ui, "Singleplayer", cx, sh * 0.45, cursor, clicked) {
+            let cx = (screen_width - BUTTON_W) / 2.0;
+            if button_clicked(ui, "Singleplayer", cx, screen_height * 0.45, cursor, clicked) {
                 *state = GameState::WorldSelect { worlds: list_worlds() };
             }
-            if button_clicked(ui, "Quit", cx, sh * 0.55, cursor, clicked) {
+            if button_clicked(ui, "Quit", cx, screen_height * 0.55, cursor, clicked) {
                 std::process::exit(0);
             }
         }
         GameState::WorldSelect { worlds } => {
             let title = "Select World";
-            let tw = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
-            ui.draw_text(title, (sw - tw) / 2.0, 40.0, TEXT_SIZE * 1.5, TEXT_COLOR);
+            let text_width = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
+            ui.draw_text(title, (screen_width - text_width) / 2.0, 40.0, TEXT_SIZE * 1.5, TEXT_COLOR);
 
-            let cx = (sw - BUTTON_W) / 2.0;
+            let cx = (screen_width - BUTTON_W) / 2.0;
             let mut y = 100.0;
             let mut selected = None;
             for (i, (_, meta)) in worlds.iter().enumerate() {
@@ -78,10 +79,10 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
         }
         GameState::CreateWorld { name, seed_text } => {
             let title = "Create New World";
-            let tw = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
-            ui.draw_text(title, (sw - tw) / 2.0, 40.0, TEXT_SIZE * 1.5, TEXT_COLOR);
+            let text_width = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
+            ui.draw_text(title, (screen_width - text_width) / 2.0, 40.0, TEXT_SIZE * 1.5, TEXT_COLOR);
 
-            let cx = (sw - BUTTON_W) / 2.0;
+            let cx = (screen_width - BUTTON_W) / 2.0;
             let mut y = 120.0;
 
             ui.draw_text("Name:", cx, y, TEXT_SIZE, DIM_TEXT);
@@ -129,20 +130,20 @@ pub fn draw_menu(ui: &mut UiPipeline, state: &mut GameState, sw: f32, sh: f32, c
         }
         GameState::PreGenerating { loaded, total, .. } => {
             let title = if *loaded >= *total { "Finishing up..." } else { "Generating terrain..." };
-            let tw = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
-            ui.draw_text(title, (sw - tw) / 2.0, sh * 0.35, TEXT_SIZE * 1.5, TEXT_COLOR);
+            let text_width = UiPipeline::text_width(title, TEXT_SIZE * 1.5);
+            ui.draw_text(title, (screen_width - text_width) / 2.0, screen_height * 0.35, TEXT_SIZE * 1.5, TEXT_COLOR);
 
             let bar_w = 400.0;
             let bar_h = 30.0;
-            let bx = (sw - bar_w) / 2.0;
-            let by = sh * 0.5;
+            let bx = (screen_width - bar_w) / 2.0;
+            let by = screen_height * 0.5;
             let progress = if *total > 0 { *loaded as f32 / *total as f32 } else { 0.0 };
             ui.draw_rect(bx, by, bar_w, bar_h, [0.15, 0.15, 0.2, 0.9]);
             ui.draw_rect(bx + 2.0, by + 2.0, (bar_w - 4.0) * progress.min(1.0), bar_h - 4.0, [0.3, 0.7, 0.3, 1.0]);
 
-            let pct = format!("{}%", (progress * 100.0).min(100.0) as u32);
-            let pct_w = UiPipeline::text_width(&pct, TEXT_SIZE);
-            ui.draw_text(&pct, (sw - pct_w) / 2.0, by + 5.0, TEXT_SIZE, TEXT_COLOR);
+            let progress_counter = format!("{}%", (progress * 100.0).min(100.0) as u32);
+            let progress_counter_width = UiPipeline::text_width(&progress_counter, TEXT_SIZE);
+            ui.draw_text(&progress_counter, (screen_width - progress_counter_width) / 2.0, by + 5.0, TEXT_SIZE, TEXT_COLOR);
         }
         GameState::EnteringWorld { .. } | GameState::Playing => {}
     }

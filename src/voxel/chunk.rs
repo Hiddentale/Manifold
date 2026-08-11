@@ -34,7 +34,6 @@ impl Chunk {
         blocks.iter().all(|&blocktype| blocktype == BlockType::Air as u8)
     }
 
-    /// True if every block in this chunk is the same opaque type
     pub fn contains_no_air(&self) -> bool {
         let blocks = self.as_bytes();
         blocks.iter().all(|&blocktype| blocktype != BlockType::Air as u8)

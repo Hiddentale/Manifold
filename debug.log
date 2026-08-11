@@ -1,1 +1,0 @@
-[perf avg over 60f] cpu_total=16.6ms acquire=0.0 record=0.1 submit=2.1 present=0.0 update=6.2 | gpu_total=7.4ms sky=4.2 phase1=1.7 pyramid=1.2 phase2=0.3 ui=0.0 | resident=2210

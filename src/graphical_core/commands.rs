@@ -225,7 +225,7 @@ unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffe
 /// 1. Phase 1: previously visible chunks (frustum cull only)
 /// 2. Build depth pyramid
 /// 3. Phase 2: previously invisible chunks (frustum + Hi-Z occlusion)
-pub unsafe fn record_mesh_shader_command_buffer(
+pub unsafe fn record_vertex_pull_command_buffer(
     device: &Device,
     data: &VulkanApplicationData,
     image_index: usize,

@@ -197,13 +197,13 @@ fn handle_keyboard_input(key_event: KeyEvent, current_window: &EventLoopWindowTa
                         return;
                     }
                     if let Some(text) = &key_event.text {
-                        for ch in text.chars() {
-                            if ch.is_ascii_digit() {
+                        for char in text.chars() {
+                            if char.is_ascii_digit() {
                                 if seed_text.len() < 10 {
-                                    seed_text.push(ch);
+                                    seed_text.push(char);
                                 }
-                            } else if (ch.is_ascii_alphanumeric() || ch == ' ' || ch == '-' || ch == '_') && name.len() < 24 {
-                                name.push(ch);
+                            } else if (char.is_ascii_alphanumeric() || char == ' ' || char == '-' || char == '_') && name.len() < 24 {
+                                name.push(char);
                             }
                         }
                     }
@@ -284,7 +284,7 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
         return;
     };
 
-    if !application.has_world() {
+    if !application.has_loaded_world() {
         let dir = world_dir.clone();
         let s = *seed;
         if let Err(e) = unsafe { application.enter_world(&dir, s) } {
@@ -293,17 +293,17 @@ fn tick_pregen(state: &mut GameState, application: &mut VulkanApplication, windo
             return;
         }
     }
-    let col_count = if let Some(world) = application.world() {
-        let mut seen = std::collections::HashSet::new();
-        for cp in world.chunk_positions() {
-            seen.insert((cp.x, cp.z));
+    let columns_count = if let Some(world) = application.world() {
+        let mut columns_seen = std::collections::HashSet::new();
+        for chunk_pos in world.chunk_positions() {
+            columns_seen.insert((chunk_pos.x, chunk_pos.z));
         }
-        seen.len()
+        columns_seen.len()
     } else {
         0
     };
-    *loaded = col_count;
-    if col_count >= *total && application.lod_settled() {
+    *loaded = columns_count;
+    if columns_count >= *total {
         *state = GameState::Playing;
         grab_cursor(window);
         *camera = Camera::default();
