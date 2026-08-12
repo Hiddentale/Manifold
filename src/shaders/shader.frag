@@ -16,17 +16,6 @@ layout(binding = 1) uniform UniformBufferObject {
     float ambient_strength;
 } ubo;
 
-struct MaterialEntry {
-    vec3 color;
-    float roughness;
-    vec3 emissive;
-    float _padding;
-};
-
-layout(binding = 2) uniform MaterialPalette {
-    MaterialEntry entries[256];
-} palette;
-
 layout(location = 0) out vec4 outColor;
 
 const float EDGE_WIDTH = 0.02;
@@ -51,43 +40,23 @@ vec3 stochastic_sample(uint layer, vec2 faceUV, vec2 worldCell, float atlasOffse
 }
 
 void main() {
-    MaterialEntry mat = palette.entries[fragMaterialId];
-
-    // Check if this material has a texture layer (non-white in texture array)
-    vec3 texCenter = texture(texArray, vec3(0.25, 0.5, float(fragMaterialId))).rgb;
-    bool hasTexture = texCenter.r < 0.99 || texCenter.g < 0.99 || texCenter.b < 0.99;
-
-    vec3 baseColor;
-    if (hasTexture) {
-        // Phase D: stochastic-tiling cell is the block's stable integer
-        // identity (chunk_pos*16 + block local), so the rotation is
-        // constant per block regardless of how curved the projection
-        // makes the face. The atlas top/side split is keyed off the
-        // block's *local* face id, not the world normal — this works for
-        // any cube face since "top" of a block on the planet means the
-        // block's local +Y face direction.
-        bool isTop = fragLocalFace == 2u;
-        float atlasOffset = isTop ? 0.5 : 0.0;
-        vec2 cell = vec2(float(fragBlockCell.x ^ (fragBlockCell.y * 73)),
-                         float(fragBlockCell.z ^ (fragBlockCell.y * 19)));
-        baseColor = stochastic_sample(fragMaterialId, fragTexCoord, cell, atlasOffset);
-    } else {
-        baseColor = mat.color;
-    }
+    // Stochastic-tiling cell is the block's stable integer
+    // identity (chunk_pos*16 + block local), so the rotation is
+    // constant per block regardless of how curved the projection
+    // makes the face. The atlas top/side split is keyed off the
+    // block's *local* face id, not the world normal — this works for
+    // any cube face since "top" of a block on the planet means the
+    // block's local +Y face direction.
+    bool isTop = fragLocalFace == 2u;
+    float atlasOffset = isTop ? 0.5 : 0.0;
+    vec2 cell = vec2(float(fragBlockCell.x ^ (fragBlockCell.y * 73)),
+                     float(fragBlockCell.z ^ (fragBlockCell.y * 19)));
+    vec3 baseColor = stochastic_sample(fragMaterialId, fragTexCoord, cell, atlasOffset);
 
     vec3 N = normalize(fragNormalWorld);
     vec3 L = normalize(-ubo.light_direction);
     float diffuse = max(dot(N, L), 0.0);
-    vec3 lighting = (ubo.ambient_strength + diffuse) * baseColor;
-    vec3 finalColor = lighting + mat.emissive;
+    vec3 finalColor = (ubo.ambient_strength + diffuse) * baseColor;
 
-    float edgeX = min(fragTexCoord.x, 1.0 - fragTexCoord.x);
-    float edgeY = min(fragTexCoord.y, 1.0 - fragTexCoord.y);
-    float edge = min(edgeX, edgeY);
-
-    if (edge < EDGE_WIDTH && !hasTexture) {
-        outColor = vec4(0.0, 0.0, 0.0, 1.0);
-    } else {
-        outColor = vec4(finalColor, 1.0);
-    }
+    outColor = vec4(finalColor, 1.0);
 }

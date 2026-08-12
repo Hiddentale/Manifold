@@ -1,11 +1,8 @@
-use crate::graphical_core::{
-    camera::UniformBufferObject, compute_cull::CullPushConstants, shaders::create_shader_module, voxel_pool::VoxelPool,
-    vulkan_object::VulkanApplicationData,
-};
+use crate::graphical_core::{compute_cull::CullPushConstants, shaders::create_shader_module, voxel_pool::VoxelPool};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
-pub struct CullCompactPipeline {
+pub struct FaceGenPipeline {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_sets: [vk::DescriptorSet; 2],
@@ -13,12 +10,12 @@ pub struct CullCompactPipeline {
     pub pipeline: vk::Pipeline,
 }
 
-impl CullCompactPipeline {
-    pub unsafe fn create(device: &Device, data: &VulkanApplicationData, voxel_pool: &VoxelPool) -> anyhow::Result<Self> {
+impl FaceGenPipeline {
+    pub unsafe fn create(device: &Device, voxel_pool: &VoxelPool) -> anyhow::Result<Self> {
         let descriptor_set_layout = create_layout(device)?;
         let descriptor_pool = create_pool(device)?;
         let descriptor_sets = allocate_sets(device, descriptor_pool, descriptor_set_layout)?;
-        write_descriptors(device, descriptor_sets, data, voxel_pool);
+        write_descriptors(device, descriptor_sets, voxel_pool);
 
         let push_range = *vk::PushConstantRange::builder()
             .stage_flags(vk::ShaderStageFlags::COMPUTE)
@@ -31,7 +28,7 @@ impl CullCompactPipeline {
             .push_constant_ranges(&push_ranges);
         let pipeline_layout = device.create_pipeline_layout(&layout_info, None)?;
 
-        let module = create_shader_module(device, include_bytes!("../shaders/chunk_cull_compact.comp.spv"))?;
+        let module = create_shader_module(device, include_bytes!("../shaders/face_gen.comp.spv"))?;
         let stage = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::COMPUTE)
             .module(module)
@@ -47,23 +44,6 @@ impl CullCompactPipeline {
             pipeline_layout,
             pipeline,
         })
-    }
-
-    pub unsafe fn update_depth_pyramid(&self, device: &Device, data: &VulkanApplicationData) {
-        let depth_info = [*vk::DescriptorImageInfo::builder()
-            .image_view(data.depth_pyramid_full_view)
-            .sampler(data.depth_pyramid_sampler)
-            .image_layout(vk::ImageLayout::GENERAL)];
-        let writes: Vec<_> = (0..2)
-            .map(|i| {
-                *vk::WriteDescriptorSet::builder()
-                    .dst_set(self.descriptor_sets[i])
-                    .dst_binding(4)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&depth_info)
-            })
-            .collect();
-        device.update_descriptor_sets(&writes, &[] as &[vk::CopyDescriptorSet]);
     }
 
     pub unsafe fn destroy(&self, device: &Device) {
@@ -82,35 +62,41 @@ unsafe fn create_layout(device: &Device) -> anyhow::Result<vk::DescriptorSetLayo
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
-        // 1: visibility (read/write)
+        // 1: voxel data (read)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(1)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
-        // 2: visible chunks (write)
+        // 2: boundary data (read)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(2)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
-        // 3: indirect args / atomic count
+        // 3: visible chunks, phase 1 (read)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(3)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
-        // 4: depth pyramid (phase 2 occlusion)
+        // 4: visible chunks, phase 2 (read)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(4)
             .descriptor_count(1)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
-        // 5: camera UBO
+        // 5: faces out (read/write)
         *vk::DescriptorSetLayoutBinding::builder()
             .binding(5)
             .descriptor_count(1)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE),
+        // 6: draw args / vertexCount atomic (read/write)
+        *vk::DescriptorSetLayoutBinding::builder()
+            .binding(6)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .stage_flags(vk::ShaderStageFlags::COMPUTE),
     ];
     let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
@@ -118,18 +104,10 @@ unsafe fn create_layout(device: &Device) -> anyhow::Result<vk::DescriptorSetLayo
 }
 
 unsafe fn create_pool(device: &Device) -> anyhow::Result<vk::DescriptorPool> {
-    // 2 sets × bindings: 8 storage buffers, 2 samplers, 2 ubos.
-    let sizes = [
-        *vk::DescriptorPoolSize::builder()
-            .descriptor_count(8)
-            .r#type(vk::DescriptorType::STORAGE_BUFFER),
-        *vk::DescriptorPoolSize::builder()
-            .descriptor_count(2)
-            .r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
-        *vk::DescriptorPoolSize::builder()
-            .descriptor_count(2)
-            .r#type(vk::DescriptorType::UNIFORM_BUFFER),
-    ];
+    // 2 sets x 7 storage buffer bindings each.
+    let sizes = [*vk::DescriptorPoolSize::builder()
+        .descriptor_count(14)
+        .r#type(vk::DescriptorType::STORAGE_BUFFER)];
     let info = vk::DescriptorPoolCreateInfo::builder().max_sets(2).pool_sizes(&sizes);
     Ok(device.create_descriptor_pool(&info, None)?)
 }
@@ -141,23 +119,21 @@ unsafe fn allocate_sets(device: &Device, pool: vk::DescriptorPool, layout: vk::D
     Ok([sets[0], sets[1]])
 }
 
-unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data: &VulkanApplicationData, pool: &VoxelPool) {
+unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], pool: &VoxelPool) {
     for (phase, &set) in sets.iter().enumerate() {
         let chunk_info = [*vk::DescriptorBufferInfo::builder().buffer(pool.chunk_info_buffer).range(vk::WHOLE_SIZE)];
-        let vis = [*vk::DescriptorBufferInfo::builder().buffer(pool.visibility_buffer).range(vk::WHOLE_SIZE)];
-        let visible = [*vk::DescriptorBufferInfo::builder()
-            .buffer(pool.visible_chunks_buffer[phase])
+        let voxel = [*vk::DescriptorBufferInfo::builder().buffer(pool.voxel_buffer).range(vk::WHOLE_SIZE)];
+        let boundary = [*vk::DescriptorBufferInfo::builder().buffer(pool.boundary_buffer).range(vk::WHOLE_SIZE)];
+        let visible1 = [*vk::DescriptorBufferInfo::builder()
+            .buffer(pool.visible_chunks_buffer[0])
             .range(vk::WHOLE_SIZE)];
-        let args = [*vk::DescriptorBufferInfo::builder()
-            .buffer(pool.indirect_args_buffer[phase])
+        let visible2 = [*vk::DescriptorBufferInfo::builder()
+            .buffer(pool.visible_chunks_buffer[1])
             .range(vk::WHOLE_SIZE)];
-        let depth = [*vk::DescriptorImageInfo::builder()
-            .image_view(data.depth_pyramid_full_view)
-            .sampler(data.depth_pyramid_sampler)
-            .image_layout(vk::ImageLayout::GENERAL)];
-        let ubo = [*vk::DescriptorBufferInfo::builder()
-            .buffer(data.uniform_buffer)
-            .range(std::mem::size_of::<UniformBufferObject>() as u64)];
+        let faces = [*vk::DescriptorBufferInfo::builder().buffer(pool.faces_buffer[phase]).range(vk::WHOLE_SIZE)];
+        let draw_args = [*vk::DescriptorBufferInfo::builder()
+            .buffer(pool.draw_args_buffer[phase])
+            .range(vk::WHOLE_SIZE)];
 
         let writes = [
             *vk::WriteDescriptorSet::builder()
@@ -169,27 +145,32 @@ unsafe fn write_descriptors(device: &Device, sets: [vk::DescriptorSet; 2], data:
                 .dst_set(set)
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&vis),
+                .buffer_info(&voxel),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(2)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&visible),
+                .buffer_info(&boundary),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(3)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(&args),
+                .buffer_info(&visible1),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(4)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&depth),
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&visible2),
             *vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(5)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&ubo),
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&faces),
+            *vk::WriteDescriptorSet::builder()
+                .dst_set(set)
+                .dst_binding(6)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&draw_args),
         ];
         device.update_descriptor_sets(&writes, &[] as &[vk::CopyDescriptorSet]);
     }

@@ -53,7 +53,6 @@ layout(push_constant) uniform PushConstants {
     vec2 screen_size;
     uint phase;
     uint opaque_mask;
-    float planet_radius;
     uint stereo;
 };
 
@@ -68,21 +67,6 @@ bool frustum_visible(vec3 aabb_min, vec3 aabb_max) {
         if (dot(normal, p) + planes[i].w < 0.0) return false;
     }
     return true;
-}
-
-bool horizon_visible(vec3 sphere_center, float sphere_radius) {
-    float cam_dist = length(camera_pos);
-    if (cam_dist <= planet_radius) return true;
-    float c_dist = length(sphere_center);
-    if (c_dist < 1e-4) return true;
-    vec3 cam_dir = camera_pos / cam_dist;
-    vec3 chunk_dir = sphere_center / c_dist;
-    float cos_a = clamp(planet_radius / cam_dist, -1.0, 1.0);
-    float sin_a = sqrt(max(0.0, 1.0 - cos_a * cos_a));
-    float sin_alpha = clamp(sphere_radius / c_dist, 0.0, 1.0);
-    float cos_alpha = sqrt(max(0.0, 1.0 - sin_alpha * sin_alpha));
-    float threshold = cos_a * cos_alpha - sin_a * sin_alpha;
-    return dot(chunk_dir, cam_dir) >= threshold;
 }
 
 bool project_aabb(mat4 vp, vec3 aabb_min, vec3 aabb_max, out vec2 uv_min, out vec2 uv_max, out float chunk_z) {
@@ -163,13 +147,7 @@ void main() {
     if (phase == 2u && was_visible) return;
 
     MeshChunkInfo chunk = chunks[chunk_idx];
-    vec3 sphere_center = (chunk.aabb_min + chunk.aabb_max) * 0.5;
-    float sphere_radius = length((chunk.aabb_max - chunk.aabb_min) * 0.5);
 
-    if (!horizon_visible(sphere_center, sphere_radius)) {
-        visibility[chunk_idx] = 0u;
-        return;
-    }
     if (!frustum_visible(chunk.aabb_min, chunk.aabb_max)) {
         visibility[chunk_idx] = 0u;
         return;

@@ -1,5 +1,4 @@
-use crate::graphical_core::shaders::create_shader_module;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{shaders::create_shader_module, vulkan_object::VulkanApplicationData};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 
@@ -11,13 +10,8 @@ pub struct CullPushConstants {
     pub camera_pos: [f32; 3],
     pub chunk_count: u32,
     pub screen_size: [f32; 2],
-    /// 1 = phase 1 (prev visible, no occlusion), 2 = phase 2 (prev invisible, occlusion test)
     pub phase: u32,
-    /// Opaque block mask (mesh shader path) or draw buffer offset (legacy path).
     pub draw_offset: u32,
-    /// Planet radius in blocks; used by the horizon culling early-out.
-    pub planet_radius: f32,
-    /// 1 = stereo (test both eye matrices for occlusion), 0 = mono (eye 0 only).
     pub stereo: u32,
     pub _pad: [f32; 2],
 }
@@ -28,7 +22,6 @@ pub struct DepthPyramidResources {
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
-    /// One descriptor set per mip pass. Set 0: depth buffer → mip 0. Set N: mip N-1 → mip N.
     pub descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
@@ -37,7 +30,6 @@ pub struct DepthPyramidResources {
 #[derive(Copy, Clone)]
 pub struct DepthReducePush {
     pub dst_size: [u32; 2],
-    /// 1 for mip 0 (1:1 copy from depth buffer), 0 for mip 1+ (2x2 max reduction).
     pub is_copy: u32,
     pub _pad: u32,
 }
@@ -150,8 +142,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cull_push_constants_size_is_144_bytes() {
-        assert_eq!(std::mem::size_of::<CullPushConstants>(), 144);
+    fn cull_push_constants_size_is_140_bytes() {
+        assert_eq!(std::mem::size_of::<CullPushConstants>(), 140);
     }
 
     #[test]
@@ -162,8 +154,7 @@ mod tests {
         assert_eq!(memoffset::offset_of!(CullPushConstants, screen_size), 112);
         assert_eq!(memoffset::offset_of!(CullPushConstants, phase), 120);
         assert_eq!(memoffset::offset_of!(CullPushConstants, draw_offset), 124);
-        assert_eq!(memoffset::offset_of!(CullPushConstants, planet_radius), 128);
-        assert_eq!(memoffset::offset_of!(CullPushConstants, stereo), 132);
+        assert_eq!(memoffset::offset_of!(CullPushConstants, stereo), 128);
     }
 
     #[test]

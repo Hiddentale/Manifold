@@ -1,5 +1,4 @@
-use crate::graphical_core::queue_families::RequiredQueueFamilies;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
+use crate::graphical_core::{queue_families::RequiredQueueFamilies, vulkan_object::VulkanApplicationData};
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
 use winit::window::Window;
@@ -21,7 +20,6 @@ pub unsafe fn create_swapchain(
     vulkan_application_data.swapchain_format = surface_format.format;
     vulkan_application_data.swapchain_extent = swapchain_image_resolution;
 
-    // Avoids stalling when the driver is using the only available image.
     let mut image_count = current_swapchain_capabilities.capabilities.min_image_count + 1;
     if current_swapchain_capabilities.capabilities.max_image_count != 0 && image_count > current_swapchain_capabilities.capabilities.max_image_count {
         image_count = current_swapchain_capabilities.capabilities.max_image_count;
