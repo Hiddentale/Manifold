@@ -30,6 +30,10 @@ pub struct GpuMeshChunkInfo {
     pub aabb_max: [f32; 3],
     pub boundary_slot: u32,
     pub chunk_pos: [i32; 3],
+    /// Pads the struct to the 48-byte stride GLSL std430 imposes on this
+    /// layout (largest member is vec3, whose 16-byte base alignment rounds
+    /// the array stride up from 44 to 48 bytes).
+    _pad: u32,
 }
 
 /// Manages GPU SSBOs for raw voxel data, boundary slices, and chunk info.
@@ -176,6 +180,7 @@ impl VoxelPool {
             aabb_max,
             boundary_slot: pool_index,
             chunk_pos: [pos.x, pos.y, pos.z],
+            _pad: 0,
         };
         let info_index = self.chunk_info_count;
         write(self.chunk_info_ptr.add(info_index as usize), info);
@@ -316,7 +321,7 @@ impl VoxelPool {
         neighbor: Option<&Chunk>,
         read_block: impl Fn(&Chunk, usize, usize) -> crate::voxel::block::BlockType,
     ) {
-        let offset = base_offset + face * TOTAL_BYTES_CHUNK_SIDES;
+        let offset = base_offset + face * BYTES_PER_CHUNK_SIDE;
         match neighbor {
             Some(chunk) => {
                 for v in 0..CHUNK_SIZE {
@@ -328,7 +333,7 @@ impl VoxelPool {
             }
             None => {
                 // No neighbor loaded — fill with Air (0) so boundary faces are emitted
-                write_bytes(self.boundary_ptr.add(offset), 0, TOTAL_BYTES_CHUNK_SIDES);
+                write_bytes(self.boundary_ptr.add(offset), 0, BYTES_PER_CHUNK_SIDE);
             }
         }
     }

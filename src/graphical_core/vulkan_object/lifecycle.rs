@@ -201,6 +201,7 @@ impl VulkanApplication {
         self.device.destroy_descriptor_pool(self.vulkan_application_data.descriptor_pool, None);
         self.device
             .destroy_descriptor_set_layout(self.vulkan_application_data.descriptor_set_layout, None);
+        self.device.destroy_query_pool(self.timing_query_pool, None);
     }
 
     unsafe fn destroy_sync_objects(&self) {
