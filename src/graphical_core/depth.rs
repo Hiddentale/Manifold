@@ -1,7 +1,4 @@
-use crate::graphical_core::{
-    memory::find_memory_type,
-    vulkan_object::VulkanApplicationData
-};
+use crate::graphical_core::{memory::find_memory_type, vulkan_object::VulkanApplicationData};
 use vulkan_rust::{vk, Device, Instance};
 
 pub const DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;

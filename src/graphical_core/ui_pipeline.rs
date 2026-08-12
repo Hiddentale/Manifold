@@ -1,8 +1,5 @@
 use crate::graphical_core::{
-    buffers::allocate_buffer,
-    memory::find_memory_type,
-    shaders::create_shader_module,
-    vulkan_object::VulkanApplicationData
+    buffers::allocate_buffer, memory::find_memory_type, shaders::create_shader_module, vulkan_object::VulkanApplicationData,
 };
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
@@ -137,6 +134,7 @@ impl UiPipeline {
         device.free_memory(self.font_memory, None);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_quad(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, uv0: [f32; 2], uv1: [f32; 2], color: [f32; 4]) {
         if self.vertex_count + 6 > MAX_VERTICES {
             return;
@@ -181,8 +179,6 @@ impl UiPipeline {
     }
 }
 
-// --- Font atlas generation ---
-
 unsafe fn create_font_atlas(
     device: &Device,
     instance: &Instance,
@@ -217,7 +213,6 @@ unsafe fn create_font_atlas(
     device.bind_image_memory(image, memory, 0)?;
 
     let ptr = device.map_memory(memory, 0, mem_reqs.size, vk::MemoryMapFlags::empty())?;
-    // Get row pitch for linear tiling
     let subresource = vk::ImageSubresource::builder()
         .aspect_mask(vk::ImageAspectFlags::COLOR)
         .mip_level(0)
@@ -231,7 +226,6 @@ unsafe fn create_font_atlas(
     }
     device.unmap_memory(memory);
 
-    // Transition to SHADER_READ_ONLY_OPTIMAL
     transition_font_image(device, data, image)?;
 
     let view_info = vk::ImageViewCreateInfo::builder()
@@ -288,8 +282,6 @@ unsafe fn transition_font_image(device: &Device, data: &VulkanApplicationData, i
     Ok(())
 }
 
-// --- Descriptor set ---
-
 unsafe fn create_descriptors(
     device: &Device,
     font_view: vk::ImageView,
@@ -330,8 +322,6 @@ unsafe fn create_descriptors(
 
     Ok((layout, pool, set))
 }
-
-// --- Graphics pipeline ---
 
 unsafe fn create_pipeline(
     device: &Device,
@@ -438,8 +428,6 @@ unsafe fn create_pipeline(
 
     Ok((pipeline_layout, pipeline))
 }
-
-// --- Procedural bitmap font (5x7 glyphs in 6x10 cells, ASCII 32-126) ---
 
 fn generate_font_bitmap() -> Vec<u8> {
     let mut pixels = vec![0u8; (ATLAS_W * ATLAS_H) as usize];

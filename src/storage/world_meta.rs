@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::Write,
-    path::{Path, PathBuf}
+    path::{Path, PathBuf},
 };
 
 const WORLDS_DIR: &str = "worlds";

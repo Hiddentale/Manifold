@@ -1,8 +1,4 @@
-use crate::graphical_core::{
-    compute_cull::CullPushConstants,
-    shaders::create_shader_module,
-    voxel_pool::VoxelPool
-};
+use crate::graphical_core::{compute_cull::CullPushConstants, shaders::create_shader_module, voxel_pool::VoxelPool};
 use vk::Handle;
 use vulkan_rust::{vk, Device};
 

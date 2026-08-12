@@ -1,13 +1,10 @@
 use crate::{
-    graphical_core::{
-        buffers::allocate_buffer,
-        vulkan_object::VulkanApplicationData
-    },
+    graphical_core::{buffers::allocate_buffer, vulkan_object::VulkanApplicationData},
     voxel::{
         chunk::{Chunk, CHUNK_SIZE},
         grid::{chunk_world_aabb, ChunkPos},
-        world::World
-    }
+        world::World,
+    },
 };
 use std::{
     collections::HashMap,

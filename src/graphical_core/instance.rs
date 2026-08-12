@@ -1,17 +1,10 @@
 use crate::{
+    graphical_core::{queue_families::RequiredQueueFamilies, vulkan_object::VulkanApplicationData},
     DEVICE_EXTENSIONS, PORTABILITY_MACOS_VERSION, VALIDATION_ENABLED, VALIDATION_LAYER,
-    graphical_core::{
-        vulkan_object::VulkanApplicationData,
-        queue_families::RequiredQueueFamilies
-    }
 };
 use anyhow::anyhow;
 use log::{debug, error, info, trace, warn};
-use std::{
-    collections::HashSet,
-    ffi::CStr,
-    os::raw::c_void
-};
+use std::{collections::HashSet, ffi::CStr, os::raw::c_void};
 use vulkan_rust::{required_extensions, vk, Device, Entry, Instance, Version};
 use winit::window::Window;
 

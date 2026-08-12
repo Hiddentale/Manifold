@@ -49,7 +49,6 @@ layout(push_constant) uniform PushConstants {
     vec2 screen_size;
     uint phase;
     uint opaque_mask;
-    float planet_radius;
     uint stereo;
 };
 

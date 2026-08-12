@@ -1,7 +1,4 @@
-use crate::{
-    event_handling::EventInfo,
-    graphical_core::camera::EyeMatrices
-};
+use crate::{event_handling::EventInfo, graphical_core::camera::EyeMatrices};
 
 pub struct FpsCounter {
     frames: u32,

@@ -1,13 +1,6 @@
-use crate::voxel::{
-    metric, 
-    player::Player, 
-    world::World
-};
+use crate::voxel::{metric, player::Player, world::World};
 use std::collections::HashSet;
-use winit::{
-    event::MouseButton, 
-    keyboard::KeyCode
-};
+use winit::{event::MouseButton, keyboard::KeyCode};
 
 const MOVE_SPEED: f32 = 15.0;
 const SPRINT_MULTIPLIER: f32 = 10.0;

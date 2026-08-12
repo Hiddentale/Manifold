@@ -94,10 +94,8 @@ pub fn handle_window_event(event: WindowEvent, event_info: &mut EventInfo, curre
             state: ElementState::Pressed,
             button,
             ..
-        } => {
-            if !event_info.game_state.is_menu() {
-                event_info.input.mouse_pressed(button);
-            }
+        } if !event_info.game_state.is_menu() => {
+            event_info.input.mouse_pressed(button);
         }
         WindowEvent::RedrawRequested => {
             if event_info.destroy_application || event_info.minimized {

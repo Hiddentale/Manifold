@@ -49,10 +49,10 @@ impl Frustum {
         let left = Self::from_view_projection(left_vp);
         let right = Self::from_view_projection(right_vp);
 
-        // For each plane pair, pick the one further from center (more permissive).
-        // Left plane: use left eye's left plane (it extends further left)
-        // Right plane: use right eye's right plane (it extends further right)
-        // Top/bottom/near/far: use whichever is more permissive (larger d value)
+        // For each plane pair, pick the one further from center.
+        // Left plane: use left eye's left plane
+        // Right plane: use right eye's right plane
+        // Top/bottom/near/far: use whichever is more permissive
         Self {
             planes: [
                 Self::more_permissive(left.planes[0], right.planes[0]), // left

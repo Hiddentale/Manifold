@@ -1,7 +1,4 @@
-use crate::graphical_core::{
-    depth::DEPTH_FORMAT,
-    vulkan_object::VulkanApplicationData
-};
+use crate::graphical_core::{depth::DEPTH_FORMAT, vulkan_object::VulkanApplicationData};
 use vulkan_rust::{vk, Device, Instance};
 
 pub unsafe fn create_render_pass(_instance: &Instance, device: &Device, data: &mut VulkanApplicationData) -> anyhow::Result<()> {

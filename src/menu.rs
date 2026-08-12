@@ -2,7 +2,7 @@ use crate::{
     game_state::GameState,
     graphical_core::{ui_pipeline::UiPipeline, vulkan_object::WORLD_DISTANCE},
     storage::world_meta::{create_world, list_worlds},
-    utils::rand_seed
+    utils::rand_seed,
 };
 
 const BUTTON_W: f32 = 300.0;

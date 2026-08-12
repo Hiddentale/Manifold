@@ -1,7 +1,4 @@
-use crate::graphical_core::{
-    queue_families::RequiredQueueFamilies,
-    vulkan_object::VulkanApplicationData
-};
+use crate::graphical_core::{queue_families::RequiredQueueFamilies, vulkan_object::VulkanApplicationData};
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
 use winit::window::Window;

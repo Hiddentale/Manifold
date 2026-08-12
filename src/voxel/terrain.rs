@@ -271,7 +271,7 @@ fn find_blocktype(
     };
 
     if depth_from_surface > CAVE_MIN_DEPTH {
-        let cave_val = noises.cave.get([world_x * CAVE_SCALE, world_y as f64 * CAVE_SCALE, world_z * CAVE_SCALE]);
+        let cave_val = noises.cave.get([world_x * CAVE_SCALE, world_y * CAVE_SCALE, world_z * CAVE_SCALE]);
         if cave_val > CAVE_THRESHOLD {
             return BlockType::Air;
         }

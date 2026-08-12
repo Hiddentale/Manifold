@@ -1,11 +1,12 @@
 use crate::graphical_core::{
-    self, MAX_FRAMES_IN_FLIGHT,
+    self,
     compute_cull::{CullPushConstants, DepthPyramidResources, DepthReducePush},
     cull_compact::CullCompactPipeline,
     face_gen_pipeline::FaceGenPipeline,
     vertex_pull_pipeline::VertexPullPipeline,
     voxel_pool::VoxelPool,
     vulkan_object::VulkanApplicationData,
+    MAX_FRAMES_IN_FLIGHT,
 };
 use vk::Handle;
 use vulkan_rust::{vk, Device, Instance};
@@ -90,7 +91,6 @@ pub unsafe fn draw_sky(device: &Device, cmd: vk::CommandBuffer, data: &VulkanApp
 }
 
 pub unsafe fn begin_render_pass(device: &Device, cmd: vk::CommandBuffer, data: &VulkanApplicationData, framebuffer_index: usize) {
-    // Reverse-Z: clear depth to 0.0 (= far plane in reverse-Z NDC).
     let clear_values = &[vk::ClearValue::color_f32([0.0, 0.0, 0.0, 1.0]), vk::ClearValue::depth_stencil(0.0, 0)];
     let info = vk::RenderPassBeginInfo::builder()
         .render_pass(data.render_pass)
@@ -114,13 +114,10 @@ unsafe fn begin_render_pass_no_clear(device: &Device, cmd: vk::CommandBuffer, da
     device.cmd_begin_render_pass(cmd, &info, vk::SubpassContents::INLINE);
 }
 
-/// Generates the depth pyramid from the depth buffer after the render pass.
-/// Transitions the depth buffer to shader-read, then dispatches one reduction per mip level.
 unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffer, data: &VulkanApplicationData, pyramid: &DepthPyramidResources) {
     let mip_count = data.depth_pyramid_mip_count;
     let extent = data.swapchain_extent;
 
-    // Transition depth buffer: DEPTH_ATTACHMENT → SHADER_READ_ONLY
     let depth_barrier = vk::ImageMemoryBarrier::builder()
         .old_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
         .new_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL)
@@ -138,7 +135,6 @@ unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffe
         &[*depth_barrier],
     );
 
-    // Pyramid is already in GENERAL layout; ensure prior reads complete before writes
     let pyramid_barrier = vk::ImageMemoryBarrier::builder()
         .old_layout(vk::ImageLayout::GENERAL)
         .new_layout(vk::ImageLayout::GENERAL)
@@ -183,7 +179,6 @@ unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffe
         let wg_y = dst_height.div_ceil(16);
         device.cmd_dispatch(cmd, wg_x, wg_y, 1);
 
-        // Barrier between mip passes: previous write must complete before next read
         if mip + 1 < mip_count {
             let mip_barrier = vk::ImageMemoryBarrier::builder()
                 .old_layout(vk::ImageLayout::GENERAL)
@@ -204,7 +199,6 @@ unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffe
         }
     }
 
-    // Transition depth buffer back to DEPTH_ATTACHMENT for next frame
     let depth_restore = vk::ImageMemoryBarrier::builder()
         .old_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL)
         .new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
@@ -223,10 +217,7 @@ unsafe fn record_depth_pyramid_generation(device: &Device, cmd: vk::CommandBuffe
     );
 }
 
-/// Records the two-phase vertex-pulling rendering pipeline:
-/// 1. Phase 1: previously visible chunks (frustum cull only)
-/// 2. Build depth pyramid
-/// 3. Phase 2: previously invisible chunks (frustum + Hi-Z occlusion)
+#[allow(clippy::too_many_arguments)]
 pub unsafe fn record_vertex_pull_command_buffer(
     device: &Device,
     data: &VulkanApplicationData,
@@ -245,7 +236,6 @@ pub unsafe fn record_vertex_pull_command_buffer(
     device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())?;
     device.begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::builder())?;
 
-    // Reset timing queries for this frame.
     device.cmd_reset_query_pool(cmd, timing_query_pool, 0, crate::graphical_core::vulkan_object::TIMING_QUERY_COUNT);
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::TOP_OF_PIPE, timing_query_pool, 0);
 
@@ -253,13 +243,10 @@ pub unsafe fn record_vertex_pull_command_buffer(
         transition_pyramid_undefined_to_general(device, cmd, data);
     }
 
-    // === Phase 1 cull compact (outside any render pass) ===
     record_cull_compact_pass(device, cmd, cull_compact, voxel_pool, cull_push, 1);
 
-    // === Phase 1 face gen: decide visible faces, reserve draw slots ===
     record_face_gen_pass(device, cmd, face_gen, voxel_pool, cull_push, 1);
 
-    // === Phase 1 vertex-pull draw: previously visible chunks (no occlusion test) ===
     begin_render_pass(device, cmd, data, image_index);
     draw_sky(device, cmd, data);
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, timing_query_pool, 1);
@@ -269,17 +256,13 @@ pub unsafe fn record_vertex_pull_command_buffer(
     device.cmd_end_render_pass(cmd);
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, timing_query_pool, 2);
 
-    // === Build depth pyramid from phase 1 depth ===
     record_depth_pyramid_generation(device, cmd, data, depth_pyramid);
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, timing_query_pool, 3);
 
-    // === Phase 2 cull compact ===
     record_cull_compact_pass(device, cmd, cull_compact, voxel_pool, cull_push, 2);
 
-    // === Phase 2 face gen ===
     record_face_gen_pass(device, cmd, face_gen, voxel_pool, cull_push, 2);
 
-    // === Phase 2 vertex-pull draw: previously invisible chunks (with occlusion test) ===
     begin_render_pass_no_clear(device, cmd, data, image_index);
 
     bind_vertex_pull_pipeline_and_draw_indirect(device, cmd, vertex_pull, voxel_pool, 2);
@@ -288,7 +271,6 @@ pub unsafe fn record_vertex_pull_command_buffer(
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, timing_query_pool, 4);
     device.cmd_write_timestamp(cmd, vk::PipelineStageFlags::BOTTOM_OF_PIPE, timing_query_pool, 5);
 
-    // UI overlay — drawn last so it's on top of everything
     let screen = [data.swapchain_extent.width as f32, data.swapchain_extent.height as f32];
     begin_render_pass_no_clear(device, cmd, data, image_index);
     ui.record(device, cmd, screen);
@@ -301,8 +283,7 @@ pub unsafe fn record_vertex_pull_command_buffer(
 
 /// Reset the indirect args x-field, run `chunk_cull_compact.comp` for one
 /// phase, and barrier the writes against both the subsequent compute read
-/// (visible_chunks SSBO consumed by the task shader) and the indirect dispatch
-/// fetch (DRAW_INDIRECT_BIT — the validation trap if omitted).
+/// and the indirect dispatch fetch.
 pub(crate) unsafe fn record_cull_compact_pass(
     device: &Device,
     cmd: vk::CommandBuffer,
@@ -362,9 +343,6 @@ pub(crate) unsafe fn record_cull_compact_pass(
     device.cmd_pipeline_barrier(
         cmd,
         vk::PipelineStageFlags::COMPUTE_SHADER,
-        // ALL_GRAPHICS covers the task-shader stage (vulkan-rust 0.10 doesn't
-        // expose TASK_SHADER_EXT as a constant). DRAW_INDIRECT covers the
-        // indirect args fetch — the "#1 validation trap" if omitted.
         vk::PipelineStageFlags::DRAW_INDIRECT | vk::PipelineStageFlags::ALL_GRAPHICS,
         vk::DependencyFlags::empty(),
         &[] as &[vk::MemoryBarrier],
@@ -372,7 +350,6 @@ pub(crate) unsafe fn record_cull_compact_pass(
         &[] as &[vk::ImageMemoryBarrier],
     );
 }
-
 
 pub(crate) unsafe fn record_face_gen_pass(
     device: &Device,

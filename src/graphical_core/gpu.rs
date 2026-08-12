@@ -1,7 +1,4 @@
-use crate::graphical_core::{
-    queue_families::RequiredQueueFamilies, 
-    vulkan_object::VulkanApplicationData
-};
+use crate::graphical_core::{queue_families::RequiredQueueFamilies, vulkan_object::VulkanApplicationData};
 use crate::DEVICE_EXTENSIONS;
 use anyhow::anyhow;
 use log::{info, warn};
