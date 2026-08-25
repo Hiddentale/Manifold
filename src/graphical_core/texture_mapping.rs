@@ -5,7 +5,6 @@ use vulkan_rust::{vk, Device, Instance};
 const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
 const BYTES_PER_PIXEL: u32 = 4;
 
-/// Atlas dimensions: each layer is 32x16 (left half = side, right half = top).
 const ATLAS_WIDTH: u32 = 32;
 const ATLAS_HEIGHT: u32 = 16;
 
@@ -20,10 +19,9 @@ const MIP_LEVELS: u32 = {
     levels
 };
 
-/// Block textures in material_id order. None means no texture (use palette color).
 const TEXTURE_FILES: &[Option<&str>] = &[
     None,               // 0: Air
-    Some("grass.png"),  // 1: Grass (32x16 atlas: side + top)
+    Some("grass.png"),  // 1: Grass
     Some("dirt.png"),   // 2: Dirt
     Some("stone.png"),  // 3: Stone
     Some("water.png"),  // 4: Water
@@ -38,7 +36,6 @@ fn get_texture_path(texture_name: &str) -> String {
 }
 
 /// Loads all block textures into a 2D array image (one layer per material).
-/// Layers without textures are filled with white (shader uses palette color instead).
 pub fn create_texture_image(
     device: &Device,
     instance: &Instance,
@@ -134,7 +131,6 @@ fn create_array_image(device: &Device, layer_count: u32) -> anyhow::Result<vk::I
         .array_layers(layer_count)
         .samples(vk::SampleCountFlags::_1)
         .tiling(vk::ImageTiling::OPTIMAL)
-        // TRANSFER_SRC needed for cmd_blit_image mip generation.
         .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::SAMPLED)
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .initial_layout(vk::ImageLayout::UNDEFINED);
@@ -220,7 +216,6 @@ fn transfer_array_image(
         let mut mip_w = ATLAS_WIDTH as i32;
         let mut mip_h = ATLAS_HEIGHT as i32;
         for level in 1..MIP_LEVELS {
-            // Transition level-1 from TRANSFER_DST to TRANSFER_SRC.
             transition_mip_layout(
                 device,
                 cmd,
@@ -267,8 +262,6 @@ fn transfer_array_image(
             mip_h = next_h;
         }
 
-        // Transition remaining TRANSFER_DST (last mip) and all TRANSFER_SRC
-        // levels to SHADER_READ_ONLY.
         transition_mip_layout(
             device,
             cmd,
@@ -316,6 +309,7 @@ fn transfer_array_image(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn transition_mip_layout(
     device: &Device,
     cmd: vk::CommandBuffer,
@@ -373,8 +367,6 @@ fn create_array_image_view(device: &Device, image: vk::Image, layer_count: u32) 
 }
 
 fn create_sampler(device: &Device) -> anyhow::Result<vk::Sampler> {
-    // NEAREST mag (sharp blocks up close), LINEAR min + LINEAR mip
-    // (trilinear when minified, kills moire at distance).
     let info = vk::SamplerCreateInfo::builder()
         .mag_filter(vk::Filter::NEAREST)
         .min_filter(vk::Filter::LINEAR)
@@ -391,7 +383,6 @@ fn create_sampler(device: &Device) -> anyhow::Result<vk::Sampler> {
     Ok(unsafe { device.create_sampler(&info, None)? })
 }
 
-/// Destroys the texture sampler, image view, image, and frees its device memory.
 pub fn destroy_textures(device: &Device, data: &mut VulkanApplicationData) {
     unsafe {
         device.destroy_sampler(data.texture_sampler, None);

@@ -8,8 +8,10 @@ temp
 world_cache/
 worlds
 debug_log.txt
+debug.log
 docs/bug1_bisection.md
 .manifold-intel.db
 world_generation/
 src/js
 data
+docs/.DS_Store

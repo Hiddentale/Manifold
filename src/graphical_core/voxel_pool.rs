@@ -1,20 +1,27 @@
-#![allow(dead_code)] // VoxelPool is wired up in Phase 1 step 7
-use crate::graphical_core::buffers::allocate_buffer;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::voxel::chunk::{Chunk, CHUNK_SIZE};
-use crate::voxel::sphere::{self, ChunkPos};
-use crate::voxel::world::World;
-use std::collections::HashMap;
+use crate::{
+    graphical_core::{buffers::allocate_buffer, vulkan_object::VulkanApplicationData},
+    voxel::{
+        chunk::{Chunk, CHUNK_SIZE},
+        grid::{chunk_world_aabb, ChunkPos},
+        world::World,
+    },
+};
+use std::{
+    collections::HashMap,
+    ptr::{copy_nonoverlapping, read, write, write_bytes},
+};
 use vulkan_rust::{vk, Device, Instance};
 
-const VOXEL_CHUNK_BYTES: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE; // 4096
-const BOUNDARY_FACES: usize = 6;
-const BOUNDARY_FACE_BYTES: usize = CHUNK_SIZE * CHUNK_SIZE; // 256
-const BOUNDARY_CHUNK_BYTES: usize = BOUNDARY_FACES * BOUNDARY_FACE_BYTES; // 1536
+const BYTES_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+const SIDES_PER_CHUNK: usize = 6;
+const BYTES_PER_CHUNK_SIDE: usize = CHUNK_SIZE * CHUNK_SIZE;
+const TOTAL_BYTES_CHUNK_SIDES: usize = SIDES_PER_CHUNK * BYTES_PER_CHUNK_SIDE;
+
+const MAX_FACES: u64 = 4_194_304;
+const FACE_RECORD_BYTES: u64 = 8; // uvec2 per face
+const DRAW_ARGS_BYTES: u64 = 16; // VkDrawIndirectCommand: 4 x u32
 
 /// GPU-side chunk info for the task shader. Must match GLSL layout (std430).
-/// Phase C: carries face id + face-local chunk grid position so the mesh
-/// shader can project per-vertex to the planet sphere.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct GpuMeshChunkInfo {
@@ -22,85 +29,80 @@ pub struct GpuMeshChunkInfo {
     pub voxel_slot: u32,
     pub aabb_max: [f32; 3],
     pub boundary_slot: u32,
-    pub chunk_pos: [i32; 3], // face-local (cx, cy, cz)
-    pub face_id: u32,
+    pub chunk_pos: [i32; 3],
+    /// Pads the struct to the 48-byte stride GLSL std430 imposes on this
+    /// layout (largest member is vec3, whose 16-byte base alignment rounds
+    /// the array stride up from 44 to 48 bytes).
+    _pad: u32,
 }
 
 /// Manages GPU SSBOs for raw voxel data, boundary slices, and chunk info.
 /// Uses slot-based allocation so chunks can be added/removed without rebuilding.
 pub struct VoxelPool {
-    // Voxel data SSBO
     pub voxel_buffer: vk::Buffer,
     voxel_memory: vk::DeviceMemory,
     voxel_ptr: *mut u8,
 
-    // Boundary data SSBO
     pub boundary_buffer: vk::Buffer,
     boundary_memory: vk::DeviceMemory,
     boundary_ptr: *mut u8,
 
-    // Chunk info SSBO
     pub chunk_info_buffer: vk::Buffer,
     chunk_info_memory: vk::DeviceMemory,
     chunk_info_ptr: *mut GpuMeshChunkInfo,
 
-    // Visibility SSBO
     pub visibility_buffer: vk::Buffer,
     visibility_memory: vk::DeviceMemory,
     visibility_ptr: *mut u32,
 
-    // Per-phase visible chunk index list (filled by `chunk_cull_compact.comp`,
-    // read by the task shader as `visible_phaseN[gl_WorkGroupID.x]`).
     pub visible_chunks_buffer: [vk::Buffer; 2],
     visible_chunks_memory: [vk::DeviceMemory; 2],
 
-    // Per-phase indirect args buffer. Layout matches
-    // `VkDrawMeshTasksIndirectCommandEXT { groupCountX, Y, Z }`.
-    // Y and Z are pre-initialised to 1 at allocation; only X is touched per
-    // frame (cleared to 0 by cmd_fill_buffer, atomically incremented by the
-    // cull compact pass). The same buffer is bound as a storage SSBO to the
-    // compute pass and as INDIRECT_BUFFER to the mesh draw call.
     pub indirect_args_buffer: [vk::Buffer; 2],
     indirect_args_memory: [vk::DeviceMemory; 2],
 
-    // Slot management
-    free_slots: Vec<u32>,
-    next_slot: u32,
-    max_slots: u32,
-    chunk_slots: HashMap<ChunkPos, u32>,
+    pub faces_buffer: [vk::Buffer; 2],
+    faces_memory: [vk::DeviceMemory; 2],
 
-    // Chunk info is packed contiguously for GPU dispatch
+    pub draw_args_buffer: [vk::Buffer; 2],
+    draw_args_memory: [vk::DeviceMemory; 2],
+
+    free_pool_indices: Vec<u32>,
+    next_pool_index: u32,
+    max_pool_indices: u32,
+    chunk_pool_indices: HashMap<ChunkPos, u32>,
+
     chunk_info_count: u32,
-    slot_to_info_index: HashMap<u32, u32>,
-    info_index_to_slot: Vec<u32>,
+    pool_index_to_info_index: HashMap<u32, u32>,
+    info_index_to_pool_index: Vec<u32>,
 }
 
 impl VoxelPool {
-    pub unsafe fn new(max_slots: u32, device: &Device, instance: &Instance, data: &mut VulkanApplicationData) -> anyhow::Result<Self> {
+    pub unsafe fn new(max_pool_indices: u32, device: &Device, instance: &Instance, data: &mut VulkanApplicationData) -> anyhow::Result<Self> {
         let host_visible = super::host_visible_coherent();
         let ssbo_flags = vk::BufferUsageFlags::STORAGE_BUFFER;
         let indirect_flags = vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER | vk::BufferUsageFlags::TRANSFER_DST;
 
-        let voxel_size = (max_slots as usize * VOXEL_CHUNK_BYTES) as u64;
+        let voxel_size = (max_pool_indices as usize * BYTES_PER_CHUNK) as u64;
         let (voxel_buffer, voxel_memory, voxel_ptr) = allocate_buffer::<u8>(voxel_size, ssbo_flags, device, instance, data, host_visible)?;
 
-        let boundary_size = (max_slots as usize * BOUNDARY_CHUNK_BYTES) as u64;
+        let boundary_size = (max_pool_indices as usize * TOTAL_BYTES_CHUNK_SIDES) as u64;
         let (boundary_buffer, boundary_memory, boundary_ptr) =
             allocate_buffer::<u8>(boundary_size, ssbo_flags, device, instance, data, host_visible)?;
 
-        let chunk_info_size = (max_slots as usize * std::mem::size_of::<GpuMeshChunkInfo>()) as u64;
+        let chunk_info_size = (max_pool_indices as usize * std::mem::size_of::<GpuMeshChunkInfo>()) as u64;
         let (chunk_info_buffer, chunk_info_memory, chunk_info_ptr) =
             allocate_buffer::<GpuMeshChunkInfo>(chunk_info_size, ssbo_flags, device, instance, data, host_visible)?;
 
-        let visibility_size = (max_slots as u64) * 4;
+        let visibility_size = (max_pool_indices as u64) * 4;
         let (visibility_buffer, visibility_memory, visibility_ptr) =
             allocate_buffer::<u32>(visibility_size, ssbo_flags, device, instance, data, host_visible)?;
 
         // Zero visibility buffer
-        std::ptr::write_bytes(visibility_ptr, 0, max_slots as usize);
+        write_bytes(visibility_ptr, 0, max_pool_indices as usize);
 
         // Per-phase visible chunk lists (one u32 per max_slot).
-        let visible_size = (max_slots as u64) * 4;
+        let visible_size = (max_pool_indices as u64) * 4;
         let (vc0_buf, vc0_mem, _vc0_ptr) = allocate_buffer::<u32>(visible_size, ssbo_flags, device, instance, data, host_visible)?;
         let (vc1_buf, vc1_mem, _vc1_ptr) = allocate_buffer::<u32>(visible_size, ssbo_flags, device, instance, data, host_visible)?;
 
@@ -112,8 +114,22 @@ impl VoxelPool {
         let (a0_buf, a0_mem, a0_ptr) = allocate_buffer::<u32>(args_size, indirect_flags, device, instance, data, host_visible)?;
         let (a1_buf, a1_mem, a1_ptr) = allocate_buffer::<u32>(args_size, indirect_flags, device, instance, data, host_visible)?;
         let init_args = [0u32, 1u32, 1u32];
-        std::ptr::copy_nonoverlapping(init_args.as_ptr(), a0_ptr, 3);
-        std::ptr::copy_nonoverlapping(init_args.as_ptr(), a1_ptr, 3);
+        copy_nonoverlapping(init_args.as_ptr(), a0_ptr, 3);
+        copy_nonoverlapping(init_args.as_ptr(), a1_ptr, 3);
+
+        // Per-phase faces SSBO (MAX_FACES * 8 bytes each).
+        let faces_size = MAX_FACES * FACE_RECORD_BYTES;
+        let (f0_buf, f0_mem, _f0_ptr) = allocate_buffer::<u8>(faces_size, ssbo_flags, device, instance, data, host_visible)?;
+        let (f1_buf, f1_mem, _f1_ptr) = allocate_buffer::<u8>(faces_size, ssbo_flags, device, instance, data, host_visible)?;
+
+        // Per-phase draw args (VkDrawIndirectCommand). Pre-init
+        // instanceCount/firstVertex/firstInstance to (1, 0, 0); only
+        // vertexCount is touched per frame.
+        let (d0_buf, d0_mem, d0_ptr) = allocate_buffer::<u32>(DRAW_ARGS_BYTES, indirect_flags, device, instance, data, host_visible)?;
+        let (d1_buf, d1_mem, d1_ptr) = allocate_buffer::<u32>(DRAW_ARGS_BYTES, indirect_flags, device, instance, data, host_visible)?;
+        let init_draw_args = [0u32, 1u32, 0u32, 0u32];
+        copy_nonoverlapping(init_draw_args.as_ptr(), d0_ptr, 4);
+        copy_nonoverlapping(init_draw_args.as_ptr(), d1_ptr, 4);
 
         Ok(Self {
             voxel_buffer,
@@ -132,102 +148,90 @@ impl VoxelPool {
             visible_chunks_memory: [vc0_mem, vc1_mem],
             indirect_args_buffer: [a0_buf, a1_buf],
             indirect_args_memory: [a0_mem, a1_mem],
-            free_slots: Vec::new(),
-            next_slot: 0,
-            max_slots,
-            chunk_slots: HashMap::new(),
+            faces_buffer: [f0_buf, f1_buf],
+            faces_memory: [f0_mem, f1_mem],
+            draw_args_buffer: [d0_buf, d1_buf],
+            draw_args_memory: [d0_mem, d1_mem],
+            free_pool_indices: Vec::new(),
+            next_pool_index: 0,
+            max_pool_indices,
+            chunk_pool_indices: HashMap::new(),
             chunk_info_count: 0,
-            slot_to_info_index: HashMap::new(),
-            info_index_to_slot: Vec::new(),
+            pool_index_to_info_index: HashMap::new(),
+            info_index_to_pool_index: Vec::new(),
         })
     }
 
     /// Uploads a chunk's voxel data and boundary slices to GPU.
     pub unsafe fn upload_chunk(&mut self, pos: ChunkPos, chunk: &Chunk, world: &World) {
-        let slot = self.allocate_slot(pos);
+        let pool_index = self.allocate_pool_index(pos);
 
         // Write voxel data
-        let voxel_offset = slot as usize * VOXEL_CHUNK_BYTES;
-        std::ptr::copy_nonoverlapping(chunk.as_bytes().as_ptr(), self.voxel_ptr.add(voxel_offset), VOXEL_CHUNK_BYTES);
+        let voxel_offset = pool_index as usize * BYTES_PER_CHUNK;
+        copy_nonoverlapping(chunk.as_bytes().as_ptr(), self.voxel_ptr.add(voxel_offset), BYTES_PER_CHUNK);
 
-        // Write boundary slices
-        self.write_boundary(slot, pos, world);
+        self.write_boundary(pool_index, pos, world);
 
-        // Write chunk info — AABB is the projected (curved) chunk envelope.
-        let (aabb_min, aabb_max) = sphere::chunk_world_aabb(pos);
+        // Write chunk info.
+        let (aabb_min, aabb_max) = chunk_world_aabb(pos);
         let info = GpuMeshChunkInfo {
             aabb_min,
-            voxel_slot: slot,
+            voxel_slot: pool_index,
             aabb_max,
-            boundary_slot: slot,
-            chunk_pos: [pos.cx, pos.cy, pos.cz],
-            face_id: sphere::face_id(pos.face),
+            boundary_slot: pool_index,
+            chunk_pos: [pos.x, pos.y, pos.z],
+            _pad: 0,
         };
         let info_index = self.chunk_info_count;
-        std::ptr::write(self.chunk_info_ptr.add(info_index as usize), info);
-        self.slot_to_info_index.insert(slot, info_index);
-        self.info_index_to_slot.push(slot);
+        write(self.chunk_info_ptr.add(info_index as usize), info);
+        self.pool_index_to_info_index.insert(pool_index, info_index);
+        self.info_index_to_pool_index.push(pool_index);
         self.chunk_info_count += 1;
     }
 
-    /// Re-uploads voxel data for a chunk that is already in the pool.
-    /// Used after in-place block edits. Does not allocate a new slot.
-    pub unsafe fn reupload_chunk(&mut self, pos: ChunkPos, chunk: &Chunk, world: &World) {
-        let slot = match self.chunk_slots.get(&pos) {
-            Some(&s) => s,
-            None => return,
-        };
-        let voxel_offset = slot as usize * VOXEL_CHUNK_BYTES;
-        std::ptr::copy_nonoverlapping(chunk.as_bytes().as_ptr(), self.voxel_ptr.add(voxel_offset), VOXEL_CHUNK_BYTES);
-        self.write_boundary(slot, pos, world);
-    }
-
     /// Removes a chunk from the pool, returning its slot for reuse.
-    pub unsafe fn remove_chunk(&mut self, pos: &ChunkPos) {
-        let slot = match self.chunk_slots.remove(pos) {
+    pub unsafe fn remove_chunk(&mut self, chunk_pos: &ChunkPos) {
+        let pool_index = match self.chunk_pool_indices.remove(chunk_pos) {
             Some(s) => s,
             None => return,
         };
-        self.free_slots.push(slot);
+        self.free_pool_indices.push(pool_index);
 
         // Swap-remove from chunk info array
-        if let Some(&info_index) = self.slot_to_info_index.get(&slot) {
+        if let Some(&info_index) = self.pool_index_to_info_index.get(&pool_index) {
             let last_index = self.chunk_info_count - 1;
             if info_index != last_index {
-                // Copy last entry into the removed slot
-                let last_info = std::ptr::read(self.chunk_info_ptr.add(last_index as usize));
-                std::ptr::write(self.chunk_info_ptr.add(info_index as usize), last_info);
+                // Copy last entry into the removed pool index
+                let last_info = read(self.chunk_info_ptr.add(last_index as usize));
+                write(self.chunk_info_ptr.add(info_index as usize), last_info);
 
                 // Update tracking for the moved entry
-                let moved_slot = self.info_index_to_slot[last_index as usize];
-                self.slot_to_info_index.insert(moved_slot, info_index);
-                self.info_index_to_slot[info_index as usize] = moved_slot;
+                let moved_index = self.info_index_to_pool_index[last_index as usize];
+                self.pool_index_to_info_index.insert(moved_index, info_index);
+                self.info_index_to_pool_index[info_index as usize] = moved_index;
             }
-            self.slot_to_info_index.remove(&slot);
-            self.info_index_to_slot.pop();
+            self.pool_index_to_info_index.remove(&pool_index);
+            self.info_index_to_pool_index.pop();
             self.chunk_info_count -= 1;
 
             // Reset visibility for the swapped index
-            std::ptr::write(self.visibility_ptr.add(info_index as usize), 0);
+            write(self.visibility_ptr.add(info_index as usize), 0);
         }
     }
 
     /// Updates boundary data for a chunk's neighbors (call when a chunk is loaded/unloaded).
-    pub unsafe fn invalidate_neighbor_boundaries(&mut self, pos: ChunkPos, world: &World) {
-        let ChunkPos { face, cx, cy, cz } = pos;
-        // Phase C1: only same-face neighbors. Cross-face boundaries land
-        // in the C2 edge transition table.
+    pub unsafe fn invalidate_neighbor_boundaries(&mut self, chunk_pos: ChunkPos, world: &World) {
         let neighbors = [
-            ChunkPos { face, cx: cx + 1, cy, cz },
-            ChunkPos { face, cx: cx - 1, cy, cz },
-            ChunkPos { face, cx, cy: cy + 1, cz },
-            ChunkPos { face, cx, cy: cy - 1, cz },
-            ChunkPos { face, cx, cy, cz: cz + 1 },
-            ChunkPos { face, cx, cy, cz: cz - 1 },
+            chunk_pos.offset(1, 0, 0),
+            chunk_pos.offset(-1, 0, 0),
+            chunk_pos.offset(0, 1, 0),
+            chunk_pos.offset(0, -1, 0),
+            chunk_pos.offset(0, 0, 1),
+            chunk_pos.offset(0, 0, -1),
         ];
         for neighbor_pos in neighbors {
-            if let Some(&slot) = self.chunk_slots.get(&neighbor_pos) {
-                self.write_boundary(slot, neighbor_pos, world);
+            if let Some(&index) = self.chunk_pool_indices.get(&neighbor_pos) {
+                self.write_boundary(index, neighbor_pos, world);
             }
         }
     }
@@ -237,11 +241,7 @@ impl VoxelPool {
     }
 
     pub fn has_chunk(&self, pos: &ChunkPos) -> bool {
-        self.chunk_slots.contains_key(pos)
-    }
-
-    pub fn chunk_positions(&self) -> Vec<ChunkPos> {
-        self.chunk_slots.keys().copied().collect()
+        self.chunk_pool_indices.contains_key(pos)
     }
 
     pub unsafe fn destroy(&mut self, device: &Device) {
@@ -269,72 +269,49 @@ impl VoxelPool {
             device.unmap_memory(self.indirect_args_memory[i]);
             device.destroy_buffer(self.indirect_args_buffer[i], None);
             device.free_memory(self.indirect_args_memory[i], None);
+
+            device.unmap_memory(self.faces_memory[i]);
+            device.destroy_buffer(self.faces_buffer[i], None);
+            device.free_memory(self.faces_memory[i], None);
+
+            device.unmap_memory(self.draw_args_memory[i]);
+            device.destroy_buffer(self.draw_args_buffer[i], None);
+            device.free_memory(self.draw_args_memory[i], None);
         }
     }
 
-    fn allocate_slot(&mut self, pos: ChunkPos) -> u32 {
-        let slot = self.free_slots.pop().unwrap_or_else(|| {
-            let s = self.next_slot;
-            self.next_slot += 1;
-            assert!(s < self.max_slots, "VoxelPool: exceeded max slot count");
-            s
+    fn allocate_pool_index(&mut self, chunk_pos: ChunkPos) -> u32 {
+        let pool_index = self.free_pool_indices.pop().unwrap_or_else(|| {
+            let next_pool_index = self.next_pool_index;
+            self.next_pool_index += 1;
+            assert!(next_pool_index < self.max_pool_indices, "VoxelPool: exceeded max pool index count");
+            next_pool_index
         });
-        self.chunk_slots.insert(pos, slot);
-        slot
+        self.chunk_pool_indices.insert(chunk_pos, pool_index);
+        pool_index
     }
 
-    unsafe fn write_boundary(&self, slot: u32, pos: ChunkPos, world: &World) {
-        let ChunkPos { face, cx, cy, cz } = pos;
-        let base = slot as usize * BOUNDARY_CHUNK_BYTES;
+    unsafe fn write_boundary(&self, pool_index: u32, chunk_pos: ChunkPos, world: &World) {
+        let base = pool_index as usize * TOTAL_BYTES_CHUNK_SIDES;
 
-        // Phase C2: same-face neighbors use exact boundary slices.
-        // Cross-face neighbors are filled solid so the mesh shader emits
-        // no boundary faces there — this hides the seam without yet
-        // remapping the slice through the edge transition rotation.
-
-        let same_face = |dx: i32, dy: i32, dz: i32| ChunkPos {
-            face,
-            cx: cx + dx,
-            cy: cy + dy,
-            cz: cz + dz,
-        };
-
-        self.write_boundary_face_or_solid(base, 0, world, same_face(1, 0, 0), |c, u, v| c.get(0, v, u));
-        self.write_boundary_face_or_solid(base, 1, world, same_face(-1, 0, 0), |c, u, v| c.get(CHUNK_SIZE - 1, v, u));
-        self.write_boundary_face_or_solid(base, 2, world, same_face(0, 1, 0), |c, u, v| c.get(u, 0, v));
-        self.write_boundary_face_or_solid(base, 3, world, same_face(0, -1, 0), |c, u, v| c.get(u, CHUNK_SIZE - 1, v));
-        self.write_boundary_face_or_solid(base, 4, world, same_face(0, 0, 1), |c, u, v| c.get(u, v, 0));
-        self.write_boundary_face_or_solid(base, 5, world, same_face(0, 0, -1), |c, u, v| c.get(u, v, CHUNK_SIZE - 1));
-    }
-
-    /// Look up the chunk at `neighbor`. If it's in range and loaded, write
-    /// its slice. If it's in range but not loaded, treat as air. If it's
-    /// out of the face's range, fill the slice with stone (= "solid") so
-    /// the mesh shader culls boundary faces — this hides cross-face seams
-    /// without yet remapping slice (u, v) through the edge rotation.
-    unsafe fn write_boundary_face_or_solid(
-        &self,
-        base: usize,
-        face: usize,
-        world: &World,
-        neighbor: ChunkPos,
-        read_block: impl Fn(&Chunk, usize, usize) -> crate::voxel::block::BlockType,
-    ) {
-        let n = sphere::FACE_SIDE_CHUNKS;
-        let in_range = neighbor.cx >= 0 && neighbor.cx < n && neighbor.cz >= 0 && neighbor.cz < n;
-        if in_range {
-            self.write_boundary_face(base, face, world.get_chunk_at(neighbor), read_block);
-        } else {
-            // Cross-face: fill with Air so the chunk emits its boundary
-            // face into the seam. The neighbor face's chunk will do the
-            // same on its own edge, and both vertices project to the
-            // same cube-edge point on the sphere — so the two faces meet
-            // visually with no gap. Phase C3 will replace this with the
-            // properly rotated neighbor slice (eliminates a few extra
-            // hidden-face emissions but currently looks correct).
-            let offset = base + face * BOUNDARY_FACE_BYTES;
-            std::ptr::write_bytes(self.boundary_ptr.add(offset), 0u8, BOUNDARY_FACE_BYTES);
-        }
+        self.write_boundary_face(base, 0, world.get_chunk_at(chunk_pos.offset(1, 0, 0)), |chunk, u, v| {
+            chunk.get_block_at(0, v, u)
+        });
+        self.write_boundary_face(base, 1, world.get_chunk_at(chunk_pos.offset(-1, 0, 0)), |chunk, u, v| {
+            chunk.get_block_at(CHUNK_SIZE - 1, v, u)
+        });
+        self.write_boundary_face(base, 2, world.get_chunk_at(chunk_pos.offset(0, 1, 0)), |chunk, u, v| {
+            chunk.get_block_at(u, 0, v)
+        });
+        self.write_boundary_face(base, 3, world.get_chunk_at(chunk_pos.offset(0, -1, 0)), |chunk, u, v| {
+            chunk.get_block_at(u, CHUNK_SIZE - 1, v)
+        });
+        self.write_boundary_face(base, 4, world.get_chunk_at(chunk_pos.offset(0, 0, 1)), |chunk, u, v| {
+            chunk.get_block_at(u, v, 0)
+        });
+        self.write_boundary_face(base, 5, world.get_chunk_at(chunk_pos.offset(0, 0, -1)), |chunk, u, v| {
+            chunk.get_block_at(u, v, CHUNK_SIZE - 1)
+        });
     }
 
     unsafe fn write_boundary_face(
@@ -344,7 +321,7 @@ impl VoxelPool {
         neighbor: Option<&Chunk>,
         read_block: impl Fn(&Chunk, usize, usize) -> crate::voxel::block::BlockType,
     ) {
-        let offset = base_offset + face * BOUNDARY_FACE_BYTES;
+        let offset = base_offset + face * BYTES_PER_CHUNK_SIDE;
         match neighbor {
             Some(chunk) => {
                 for v in 0..CHUNK_SIZE {
@@ -356,7 +333,7 @@ impl VoxelPool {
             }
             None => {
                 // No neighbor loaded — fill with Air (0) so boundary faces are emitted
-                std::ptr::write_bytes(self.boundary_ptr.add(offset), 0, BOUNDARY_FACE_BYTES);
+                write_bytes(self.boundary_ptr.add(offset), 0, BYTES_PER_CHUNK_SIDE);
             }
         }
     }

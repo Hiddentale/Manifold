@@ -21,7 +21,7 @@ pub unsafe fn choose_gpu(instance: &Instance, data: &mut VulkanApplicationData, 
             return Ok(());
         }
         warn!(
-            "VR-preferred GPU (`{}`) is not suitable — falling back to enumeration.",
+            "VR-preferred GPU (`{}`) is not suitable, falling back to enumeration.",
             properties.device_name
         );
     }

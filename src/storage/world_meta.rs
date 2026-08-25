@@ -1,6 +1,8 @@
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 const WORLDS_DIR: &str = "worlds";
 const META_FILE: &str = "world.toml";
@@ -77,15 +79,6 @@ pub fn create_world(name: &str, seed: u32) -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
-/// Returns the svdag cache path for a world directory at the given LOD level.
-pub fn svdag_lod_dir(world_dir: &Path, lod_level: u32) -> PathBuf {
-    if lod_level == 0 {
-        world_dir.join("svdag")
-    } else {
-        world_dir.join(format!("svdag_lod{lod_level}"))
-    }
-}
-
 fn sanitize_dir_name(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
@@ -93,7 +86,6 @@ fn sanitize_dir_name(name: &str) -> String {
 }
 
 fn current_timestamp() -> String {
-    // Simple timestamp without chrono dependency: seconds since UNIX epoch
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

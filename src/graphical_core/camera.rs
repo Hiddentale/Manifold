@@ -1,20 +1,13 @@
-use crate::graphical_core::buffers::allocate_buffer;
-use crate::graphical_core::vulkan_object::VulkanApplicationData;
-use crate::voxel::player::Player;
+use crate::{
+    graphical_core::{buffers::allocate_buffer, vulkan_object::VulkanApplicationData},
+    voxel::player::Player,
+};
 use glam::{Mat4, Vec3};
 use vulkan_rust::{vk, Device, Instance};
 
 pub const FOV_DEGREES: f32 = 90.0;
-/// Reverse-Z near plane. With infinite-far reverse-Z this is the *only* depth
-/// constant that affects precision: smaller near = more precision near the
-/// camera, no penalty far away.
 const NEAR_PLANE: f32 = 0.1;
 
-/// Phase D': camera is a *derived* view of the player. `position` and
-/// `forward` are written from `Player` once per frame and never mutated
-/// independently. The player's cube-space coordinates are the source of
-/// truth; cartesian state lives here only because the rendering pipeline
-/// (UBO upload, frustum, push constants) expects `Vec3`.
 pub struct Camera {
     pub position: Vec3,
     pub forward: Vec3,
@@ -24,16 +17,14 @@ pub struct Camera {
 impl Camera {
     pub fn from_player(player: &Player) -> Self {
         Self {
-            position: player.eye_pos(),
+            position: player.camera_position(),
             forward: player.forward,
             right: player.right,
         }
     }
 
-    /// Re-derive view state from the player. Call once per frame after
-    /// physics has settled.
     pub fn sync_from_player(&mut self, player: &Player) {
-        self.position = player.eye_pos();
+        self.position = player.camera_position();
         self.forward = player.forward;
         self.right = player.right;
     }
@@ -54,7 +45,7 @@ impl Default for Camera {
 /// same matrix; VR fills left eye at index 0, right eye at index 1.
 pub const MAX_VIEWS: usize = 2;
 
-/// Per-eye view/projection matrices — the camera abstraction's output.
+/// Per-eye view/projection matrices.
 /// Desktop: both entries identical. VR: left eye at 0, right eye at 1.
 #[derive(Copy, Clone, Debug)]
 pub struct EyeMatrices {
@@ -63,7 +54,6 @@ pub struct EyeMatrices {
 }
 
 impl EyeMatrices {
-    /// Build from a desktop camera — same matrix for both eyes.
     pub fn from_camera(camera: &Camera, extent: vk::Extent2D) -> Self {
         let vp = view_projection_matrix(camera, extent);
         let inv = vp.inverse();
@@ -73,7 +63,7 @@ impl EyeMatrices {
         }
     }
 
-    /// Build from per-eye view and projection matrices (for VR).
+    /// For VR
     #[allow(dead_code)]
     pub fn from_stereo(left_vp: Mat4, right_vp: Mat4) -> Self {
         Self {
@@ -82,7 +72,7 @@ impl EyeMatrices {
         }
     }
 
-    /// The primary VP matrix (eye 0). Used for frustum culling on desktop.
+    /// The primary VP matrix (eye 0).
     pub fn primary_vp(&self) -> Mat4 {
         self.view_projection[0]
     }
@@ -100,9 +90,6 @@ pub struct UniformBufferObject {
     inverse_view_projection: [[[f32; 4]; 4]; MAX_VIEWS],
     light_direction: [f32; 3],
     ambient_strength: f32,
-    planet_radius: f32,
-    cube_half: f32,
-    _pad: [f32; 2],
 }
 
 /// Allocates a persistently mapped uniform buffer for camera matrices.
@@ -141,9 +128,6 @@ pub fn update_uniform_buffer(data: &VulkanApplicationData, eyes: &EyeMatrices) -
         ],
         light_direction: sun_direction.to_array(),
         ambient_strength: 0.15,
-        planet_radius: crate::voxel::sphere::PLANET_RADIUS_BLOCKS as f32,
-        cube_half: crate::voxel::sphere::CUBE_HALF_BLOCKS as f32,
-        _pad: [0.0; 2],
     };
 
     unsafe {
@@ -162,7 +146,6 @@ pub fn destroy_uniform_buffer(device: &Device, vulkan_application_data: &mut Vul
 }
 
 /// Computes the view-projection matrix for the current camera and swapchain extent.
-/// Used by both UBO upload and frustum extraction.
 pub fn view_projection_matrix(camera: &Camera, extent: vk::Extent2D) -> Mat4 {
     let width = extent.width as f32;
     let height = extent.height as f32;
@@ -170,12 +153,6 @@ pub fn view_projection_matrix(camera: &Camera, extent: vk::Extent2D) -> Mat4 {
     projection * camera.view_matrix()
 }
 
-/// Right-handed Vulkan projection with infinite-far and reverse-Z depth.
-/// Maps view-space `z = -near` → NDC `z = 1`, `z = -∞` → NDC `z = 0`. The
-/// reversed range puts depth precision where it matters (close to the camera)
-/// and the infinite far plane removes the second precision-eating divide.
-///
-/// Y axis is negated to match Vulkan's Y-down NDC.
 pub fn reverse_z_infinite_perspective(fov_y: f32, aspect: f32, near: f32) -> Mat4 {
     let f = 1.0 / (fov_y * 0.5).tan();
     let mut m = Mat4::ZERO;
@@ -226,8 +203,6 @@ mod reverse_z_tests {
         let inv = m.inverse();
         let p = inv * glam::Vec4::new(0.0, 0.0, 1.0, 1.0); // near plane at screen center
         let w = p / p.w;
-        // Should land on the near plane (view z ≈ -near; since we have no view
-        // transform here, that's world z ≈ -0.1).
         assert!((w.z + 0.1).abs() < 1e-4, "inverse * near = {:?}", w);
     }
 }
