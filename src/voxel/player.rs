@@ -134,23 +134,44 @@ impl Player {
         self.can_move(0.0, 0.0, direction.z, world);
     }
 
-    pub fn capsule_collides(&self, world: &World) -> bool {
-        let offsets = [
-            (-self.half_width, -self.half_width),
-            (-self.half_width, self.half_width),
-            (self.half_width, -self.half_width),
-            (self.half_width, self.half_width),
-        ];
+    pub fn swept_AABB(&self, world: &World) {
+        // Step 1: Find time and distance until collision and for how long collision happens
+        //  on each axis separately.
+        // So need to find first block that gets hit by raycast.
+        // 
+        // Step 2: Find which axis collides first (by time)
+        // if all axes agree on the collision, we know an actual collision has happened this frame.
+        if () {
 
-        for y_offset in [0.0, 0.85, self.height] {
-            for &(dx, dz) in &offsets {
-                if block_is_solid(
-                    (self.x + dx).floor() as i32,
-                    (self.y + y_offset).floor() as i32,
-                    (self.z + dz).floor() as i32,
-                    world,
-                ) {
-                    return true;
+        }
+        else {
+            // Step 3: if there was a collision, calculate the normal of the edge that was collided with  
+        }
+
+
+
+        todo!()
+    }
+
+    pub fn capsule_collides(&self, world: &World) -> bool {
+        let player_min_x = (self.x - self.half_width).floor() as i32;
+        let player_min_y = self.y.floor() as i32;
+        let player_min_z = (self.z - self.half_width).floor() as i32;
+        let player_max_x = (self.x + self.half_width).floor() as i32;
+        let player_max_y = (self.y + self.height).floor() as i32;
+        let player_max_z = (self.z + self.half_width).floor() as i32;
+
+        for block_x in player_min_x..=player_max_x {
+            for block_y in player_min_y..=player_max_y {
+                for block_z in player_min_z..=player_max_z {
+                    if block_is_solid(
+                        block_x,
+                        block_y,
+                        block_z,
+                        world,
+                    ) {
+                        return true;
+                    }
                 }
             }
         }
